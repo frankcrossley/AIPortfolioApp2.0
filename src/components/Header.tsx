@@ -1,14 +1,13 @@
 import React from 'react';
-import { Download, Plus, ArrowLeft } from 'lucide-react';
+import { Download, ArrowLeft } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
+import { AddToPortfolioMenu } from './AddToPortfolioMenu';
 
 interface HeaderProps {
   title: string;
   breadcrumbs?: { label: string; action?: () => void }[];
   showExport?: boolean;
   showRegister?: boolean;
-  registerButtonText?: string;
-  onRegisterClick?: () => void;
   customActions?: React.ReactNode;
 }
 
@@ -17,11 +16,9 @@ export const Header: React.FC<HeaderProps> = ({
   breadcrumbs,
   showExport = true,
   showRegister = true,
-  registerButtonText = 'Register Initiative',
-  onRegisterClick,
   customActions,
 }) => {
-  const { openRegisterModal, showToast, items } = usePortfolio();
+  const { showToast, items } = usePortfolio();
 
   const handleExport = () => {
     const jsonStr = JSON.stringify(items, null, 2);
@@ -85,16 +82,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {showRegister && (
-            <button
-              id="header-register-btn"
-              onClick={onRegisterClick || (() => openRegisterModal())}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-md shadow-xs hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{registerButtonText}</span>
-            </button>
-          )}
+          {showRegister && <AddToPortfolioMenu />}
 
           <div className="w-px h-6 bg-slate-200 mx-1 hidden sm:block" />
 

@@ -29,7 +29,8 @@ import {
   ValueHypothesis,
   IntendedOutcome,
 } from '../types';
-import { formatGBP, calculationBasisText, calculationMethodLabel } from '../lib/valueCalculations';
+import { formatGBP, calculationBasisText, calculationMethodLabel, costRecordTotal } from '../lib/valueCalculations';
+import { getRecommendedActions } from '../lib/recommendations';
 
 interface ItemDetailViewProps {
   itemId: string;
@@ -38,6 +39,7 @@ interface ItemDetailViewProps {
 export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
   const {
     items,
+    allRecords,
     relationships,
     viewItem,
     viewPlatform,
@@ -52,8 +54,11 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
   const [isEditingOutcome, setIsEditingOutcome] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  // Find target item
-  const item: EstateItem | undefined = items.find((i) => i.id === itemId) || items.find((i) => i.id === 'agt-1') || items[0];
+  // Find target item (may be an Estate Item or an Initiative adapted for display)
+  const item: EstateItem | undefined =
+    allRecords.find((i) => i.id === itemId) || allRecords.find((i) => i.id === 'agt-1') || allRecords[0];
+
+  const recommendedActions = item ? getRecommendedActions(item) : [];
 
   // Editable state
   const [formData, setFormData] = useState({
@@ -146,8 +151,8 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
     (i) => i.id === item.applicationId || (i.type === 'Application' && i.name === item.applicationName)
   );
 
-  // Find related initiative
-  const initiativeItem = items.find(
+  // Find related initiative (lives in the separate initiatives array, so search allRecords)
+  const initiativeItem = allRecords.find(
     (i) => i.id === item.initiativeId || (i.type === 'Initiative' && i.name === item.initiativeName)
   );
 
@@ -314,6 +319,31 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
 
       {/* Tab Body */}
       <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
+        {/* Contextual recommendations - not a completeness score, just what matters next for this record type/stage */}
+        {recommendedActions.length > 0 && (
+          <div className="bg-amber-50/60 rounded-xl border border-amber-200/80 p-5 shadow-xs">
+            <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              Initial record — additional information recommended
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {recommendedActions.map((action) => (
+                <button
+                  key={action.id}
+                  onClick={() => {
+                    setActiveTab(action.tab);
+                    if (action.openEdit) setIsEditing(true);
+                    if (action.tab === 'outcomes') setIsEditingOutcome(true);
+                  }}
+                  className="px-2.5 py-1.5 rounded-md bg-white border border-amber-200 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Inline Edit Mode */}
         {isEditing && (
           <div className="bg-white rounded-xl border border-blue-200 p-5 shadow-xs space-y-4">
@@ -549,7 +579,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                   <span className="text-slate-400 block mb-0.5">Owner</span>
                   <span className="font-semibold text-slate-900 flex items-center gap-1.5">
                     {item.businessOwner || (
-                      <span className="text-amber-600 font-medium">Not specified</span>
+                      <span className="text-amber-600 font-medium">Not assigned</span>
                     )}
                   </span>
                 </div>
@@ -557,7 +587,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                 <div>
                   <span className="text-slate-400 block mb-0.5">Technical Owner</span>
                   <span className="font-semibold text-slate-900">
-                    {item.technicalOwner || <span className="text-amber-600 font-medium">Not specified</span>}
+                    {item.technicalOwner || <span className="text-amber-600 font-medium">Not assigned</span>}
                   </span>
                 </div>
 
@@ -693,7 +723,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                         Team
                       </span>
                       <span className="font-semibold text-slate-800">
-                        {item.team || <span className="text-slate-400 font-normal">Not specified</span>}
+                        {item.team || <span className="text-slate-400 font-normal">Not assigned</span>}
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-400">Team</span>
@@ -743,38 +773,84 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                   Basic estimated costing model. No detailed cost allocation ledger has been implemented yet.
                 </p>
               </div>
-              {item.annualCost !== undefined && (
+              {item.costRecord ? (
                 <span
                   className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                    item.isCostEstimated
+                    item.costRecord.status === 'Not recorded'
+                      ? 'bg-slate-100 text-slate-500 border-slate-200'
+                      : item.costRecord.status === 'Estimated'
                       ? 'bg-amber-50 text-amber-700 border-amber-200/80'
                       : 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
                   }`}
                 >
-                  {item.isCostEstimated ? 'Estimated' : 'Confirmed'}
+                  {item.costRecord.status}
                 </span>
+              ) : (
+                item.annualCost !== undefined && (
+                  <span
+                    className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                      item.isCostEstimated
+                        ? 'bg-amber-50 text-amber-700 border-amber-200/80'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                    }`}
+                  >
+                    {item.isCostEstimated ? 'Estimated' : 'Confirmed'}
+                  </span>
+                )
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <CostTile label="Development cost" value={item.devCost} note="One-off build and prompt validation effort" />
-              <CostTile label="Platform / shared cost" value={item.sharedCost} note="Attributed enterprise platform licensing" />
-              <CostTile label="Operational cost" value={item.opsCost} note="Ongoing run and infrastructure maintenance" />
-              <CostTile label="External consultancy" value={item.externalConsultancyCost} note="Third-party delivery spend" />
-              <CostTile label="Internal team cost" value={item.internalTeamCost} note="Internal resourcing at blended rate" />
-              <div className="p-4 bg-blue-50/60 rounded-lg border border-blue-200/80">
-                <div className="text-xs text-blue-900 font-semibold">Total estimated annual cost</div>
-                <div className="text-xl font-bold text-blue-900 mt-1">{formatGBP(item.annualCost)}</div>
-                <p className="text-[11px] text-blue-800/80 mt-1">
-                  {item.isCostEstimated ? 'Estimated, not yet confirmed' : 'Confirmed figure'}
-                </p>
-              </div>
-            </div>
+            {item.costRecord ? (
+              item.costRecord.status === 'Not recorded' ? (
+                <div className="p-6 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <p className="text-xs text-slate-500">No financial information recorded</p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <CostTile label="Development cost" value={item.costRecord.developmentCost} note="One-off build and delivery effort" />
+                    <CostTile label="Platform / shared cost" value={item.costRecord.platformSharedCost} note="Attributed enterprise platform licensing" />
+                    <CostTile label="Operational cost" value={item.costRecord.annualOperatingCost} note="Ongoing run and infrastructure maintenance" />
+                    <CostTile label="Internal resource cost" value={item.costRecord.internalResourceCost} note="Internal resourcing at blended rate" />
+                    <CostTile label="External consultancy" value={item.costRecord.externalConsultancyCost} note="Third-party delivery spend" />
+                    <div className="p-4 bg-blue-50/60 rounded-lg border border-blue-200/80">
+                      <div className="text-xs text-blue-900 font-semibold">Total (from entered figures)</div>
+                      <div className="text-xl font-bold text-blue-900 mt-1">{formatGBP(costRecordTotal(item.costRecord))}</div>
+                      <p className="text-[11px] text-blue-800/80 mt-1">
+                        {item.costRecord.period ? `${item.costRecord.period} · ` : ''}
+                        {item.costRecord.confidence ? `${item.costRecord.confidence} confidence` : 'Confidence not set'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
+                    <span className="font-semibold text-slate-700">Source or notes: </span>
+                    {item.costRecord.sourceNotes || 'Not provided.'}
+                  </div>
+                </>
+              )
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <CostTile label="Development cost" value={item.devCost} note="One-off build and prompt validation effort" />
+                  <CostTile label="Platform / shared cost" value={item.sharedCost} note="Attributed enterprise platform licensing" />
+                  <CostTile label="Operational cost" value={item.opsCost} note="Ongoing run and infrastructure maintenance" />
+                  <CostTile label="External consultancy" value={item.externalConsultancyCost} note="Third-party delivery spend" />
+                  <CostTile label="Internal team cost" value={item.internalTeamCost} note="Internal resourcing at blended rate" />
+                  <div className="p-4 bg-blue-50/60 rounded-lg border border-blue-200/80">
+                    <div className="text-xs text-blue-900 font-semibold">Total estimated annual cost</div>
+                    <div className="text-xl font-bold text-blue-900 mt-1">{formatGBP(item.annualCost)}</div>
+                    <p className="text-[11px] text-blue-800/80 mt-1">
+                      {item.isCostEstimated ? 'Estimated, not yet confirmed' : 'Confirmed figure'}
+                    </p>
+                  </div>
+                </div>
 
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
-              <span className="font-semibold text-slate-700">Calculation basis: </span>
-              {item.costCalculationBasis || 'Not provided - no calculation basis has been recorded for this figure.'}
-            </div>
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
+                  <span className="font-semibold text-slate-700">Calculation basis: </span>
+                  {item.costCalculationBasis || 'Not provided - no calculation basis has been recorded for this figure.'}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -1013,7 +1089,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
               {outgoingRels.concat(incomingRels).map((rel) => {
                 const isOut = rel.sourceId === item.id;
                 const peerId = isOut ? rel.targetId : rel.sourceId;
-                const peerItem = items.find((i) => i.id === peerId);
+                const peerItem = allRecords.find((i) => i.id === peerId);
 
                 return (
                   <div

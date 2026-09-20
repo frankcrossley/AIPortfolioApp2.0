@@ -28,7 +28,7 @@ const VIEW_LABELS: Record<PortfolioViewMode, string> = {
 
 export const PortfolioListView: React.FC = () => {
   const {
-    items,
+    allRecords: items,
     filters,
     setFilters,
     resetFilters,

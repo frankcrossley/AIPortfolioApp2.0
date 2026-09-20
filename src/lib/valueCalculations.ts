@@ -1,5 +1,6 @@
 import {
   CalculationMethod,
+  CostRecord,
   CostReductionCalculationInputs,
   ProductivityCalculationInputs,
   ValueHypothesis,
@@ -84,6 +85,24 @@ export function isQuantified(vh?: ValueHypothesis | null): boolean {
 export function formatGBP(value: number | undefined | null): string {
   if (value === undefined || value === null || Number.isNaN(value)) return 'Not provided';
   return `£${Math.round(value).toLocaleString()}`;
+}
+
+/**
+ * Sums only the cost figures that have actually been entered on a
+ * CostRecord. Returns undefined (never 0) when nothing has been entered,
+ * so "no financial information recorded" is never confused with "£0".
+ */
+export function costRecordTotal(record?: CostRecord | null): number | undefined {
+  if (!record) return undefined;
+  const figures = [
+    record.developmentCost,
+    record.annualOperatingCost,
+    record.platformSharedCost,
+    record.internalResourceCost,
+    record.externalConsultancyCost,
+  ].filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+  if (figures.length === 0) return undefined;
+  return figures.reduce((sum, v) => sum + v, 0);
 }
 
 export function formatGBPCompact(value: number | undefined | null): string {

@@ -13,7 +13,8 @@ import { EstateMapView } from './views/EstateMapView';
 import { PortfolioListView } from './views/PortfolioListView';
 import { ItemDetailView } from './views/ItemDetailView';
 import { PlatformsRollupView } from './views/PlatformsRollupView';
-import { RegisterModal } from './views/RegisterModal';
+import { PortfolioItemDrawer } from './components/drawer/PortfolioItemDrawer';
+import { InitiativeDrawer } from './components/drawer/InitiativeDrawer';
 import { ComingSoonView } from './views/ComingSoonView';
 import { SettingsView } from './views/SettingsView';
 
@@ -42,8 +43,9 @@ const MainLayout: React.FC = () => {
         )}
       </main>
 
-      {/* Register Initiative Multi-Step Workflow Modal */}
-      <RegisterModal />
+      {/* Add to Portfolio drawers */}
+      <PortfolioItemDrawer />
+      <InitiativeDrawer />
 
       {/* Toast Notification Container */}
       <ToastContainer />
