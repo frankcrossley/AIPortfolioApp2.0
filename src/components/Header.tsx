@@ -35,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 px-8 py-6 shrink-0">
+    <header className="bg-white border-b border-slate-200 px-8 py-5 shrink-0">
       {/* Optional Breadcrumbs */}
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">

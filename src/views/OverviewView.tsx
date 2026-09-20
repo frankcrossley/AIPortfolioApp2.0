@@ -32,14 +32,14 @@ export const OverviewView: React.FC = () => {
     <div className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-y-auto">
       <Header title="Portfolio Overview" />
 
-      <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
+      <div className="p-6 max-w-7xl w-full mx-auto space-y-5">
         {/* Top 4 KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* KPI 1 */}
           <div
             id="kpi-total-initiatives"
             onClick={() => goToPortfolioView('all')}
-            className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
           >
             <div className="text-xs font-medium text-slate-500 flex items-center justify-between">
               <span>Total AI Initiatives</span>
@@ -57,7 +57,7 @@ export const OverviewView: React.FC = () => {
           <div
             id="kpi-annual-cost"
             onClick={() => goToPortfolioView('investment')}
-            className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
           >
             <div className="text-xs font-medium text-slate-500 flex items-center justify-between">
               <span>Total estimated annual investment</span>
@@ -79,7 +79,7 @@ export const OverviewView: React.FC = () => {
               setFilters((prev) => ({ ...prev, type: 'Agent', lifecycleStage: 'Production' }));
               setActiveNav('portfolio');
             }}
-            className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
           >
             <div className="text-xs font-medium text-slate-500 flex items-center justify-between">
               <span>Production agents</span>
@@ -97,7 +97,7 @@ export const OverviewView: React.FC = () => {
           <div
             id="kpi-estimated-benefit"
             onClick={() => goToPortfolioView('value')}
-            className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
           >
             <div className="text-xs font-medium text-slate-500 flex items-center justify-between">
               <span>Estimated annual benefit</span>
@@ -120,10 +120,10 @@ export const OverviewView: React.FC = () => {
         </div>
 
         {/* Row 1: Portfolio composition (Investing) | Management attention */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* Left: Portfolio Composition - covers "what are we investing in" */}
-          <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs flex flex-col">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-100">
+          <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex flex-col">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">What are we investing in?</h2>
                 <p className="text-xs text-slate-500">Portfolio composition and investment distribution</p>
@@ -166,7 +166,7 @@ export const OverviewView: React.FC = () => {
 
             {/* Tab: By AI Type (Interactive Donut) */}
             {compositionTab === 'type' && (
-              <div className="pt-6 flex flex-col md:flex-row items-center justify-around gap-6 flex-1">
+              <div className="pt-6 flex flex-col md:flex-row items-center justify-around gap-5 flex-1">
                 <DonutChart
                   data={compositionByType}
                   total={metrics.totalInitiatives}
@@ -279,9 +279,9 @@ export const OverviewView: React.FC = () => {
           </div>
 
           {/* Right: Management attention - covers "where does attention need to be focused" */}
-          <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between">
+          <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between pb-5 border-b border-slate-100">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">Where does management attention need to be focused?</h2>
                   <p className="text-xs text-slate-500">Information gaps affecting portfolio defensibility</p>
@@ -346,10 +346,10 @@ export const OverviewView: React.FC = () => {
         </div>
 
         {/* Row 2: Value & outcomes (Achieving) | Lifecycle progress (Progressing) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* Left: Value & Outcomes */}
-          <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs flex flex-col">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-100">
+          <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex flex-col">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">What are we trying to achieve?</h2>
                 <p className="text-xs text-slate-500">Estimated annual benefit by category and department</p>
@@ -453,8 +453,8 @@ export const OverviewView: React.FC = () => {
           </div>
 
           {/* Right: Lifecycle progress */}
-          <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs flex flex-col">
-            <div className="pb-5 border-b border-slate-100">
+          <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex flex-col">
+            <div className="pb-4 border-b border-slate-100">
               <h2 className="text-sm font-bold text-slate-900">What is progressing?</h2>
               <p className="text-xs text-slate-500">Delivery lifecycle stage - not a measure of value performance</p>
             </div>

@@ -14,6 +14,11 @@ const emptyForm = () => ({
   businessOwnerId: undefined as string | undefined,
   technicalOwnerId: undefined as string | undefined,
   teamId: undefined as string | undefined,
+  sponsor: '',
+  deliveryOwner: '',
+  startDate: '',
+  targetEndDate: '',
+  budget: undefined as number | undefined,
 });
 
 /**
@@ -37,11 +42,13 @@ export const InitiativeDrawer: React.FC = () => {
 
   const [formData, setFormData] = useState(emptyForm());
   const [nameError, setNameError] = useState<string | null>(null);
+  const [ownerError, setOwnerError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isInitiativeDrawerOpen) {
       setFormData(emptyForm());
       setNameError(null);
+      setOwnerError(null);
     }
   }, [isInitiativeDrawerOpen]);
 
@@ -56,10 +63,16 @@ export const InitiativeDrawer: React.FC = () => {
   const teamOptions = activeTeams.map((t) => ({ id: t.id, label: t.name }));
 
   const handleSave = () => {
+    let valid = true;
     if (!formData.name.trim()) {
       setNameError('Name is required');
-      return;
+      valid = false;
     }
+    if (!formData.businessOwnerId) {
+      setOwnerError('A business owner is required');
+      valid = false;
+    }
+    if (!valid) return;
 
     const selectedBU = activeBusinessUnits.find((b) => b.id === formData.businessUnitId);
     const selectedOwner = activePeople.find((p) => p.id === formData.businessOwnerId);
@@ -79,6 +92,11 @@ export const InitiativeDrawer: React.FC = () => {
       technicalOwnerId: formData.technicalOwnerId,
       team: selectedTeam?.name,
       teamId: formData.teamId,
+      sponsor: formData.sponsor || undefined,
+      deliveryOwner: formData.deliveryOwner || undefined,
+      startDate: formData.startDate || undefined,
+      targetEndDate: formData.targetEndDate || undefined,
+      budget: formData.budget,
       valueEvidenceStatus: 'None',
     });
   };
@@ -178,12 +196,17 @@ export const InitiativeDrawer: React.FC = () => {
         </div>
       </DrawerSection>
 
-      <DrawerSection title="Ownership" description="Who is accountable for this initiative, when known.">
+      <DrawerSection title="Ownership" description="Who is accountable for this initiative." defaultOpen>
         <div>
-          <label className="block font-semibold text-slate-700 mb-1">Business owner</label>
+          <label className="block font-semibold text-slate-700 mb-1">
+            Business owner <span className="text-rose-500">*</span>
+          </label>
           <SearchableSelect
             value={formData.businessOwnerId}
-            onChange={(id) => setFormData({ ...formData, businessOwnerId: id })}
+            onChange={(id) => {
+              setFormData({ ...formData, businessOwnerId: id });
+              if (ownerError) setOwnerError(null);
+            }}
             options={peopleOptions}
             placeholder="Search people..."
             emptyLabel="Not assigned"
@@ -193,6 +216,7 @@ export const InitiativeDrawer: React.FC = () => {
               return created ? { id: created.id, label: created.name } : undefined;
             }}
           />
+          {ownerError && <p className="text-rose-500 text-[11px] mt-1">{ownerError}</p>}
         </div>
         <div>
           <label className="block font-semibold text-slate-700 mb-1">Technical owner</label>
@@ -222,6 +246,61 @@ export const InitiativeDrawer: React.FC = () => {
               const created = addTeam({ name, status: 'Active' });
               return created ? { id: created.id, label: created.name } : undefined;
             }}
+          />
+        </div>
+      </DrawerSection>
+
+      <DrawerSection title="Programme details" description="Optional - add these when known.">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Sponsor</label>
+            <input
+              type="text"
+              value={formData.sponsor}
+              onChange={(e) => setFormData({ ...formData, sponsor: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Delivery owner</label>
+            <input
+              type="text"
+              value={formData.deliveryOwner}
+              onChange={(e) => setFormData({ ...formData, deliveryOwner: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Start date</label>
+            <input
+              type="text"
+              placeholder="Optional"
+              value={formData.startDate}
+              onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Target end date</label>
+            <input
+              type="text"
+              placeholder="Optional"
+              value={formData.targetEndDate}
+              onChange={(e) => setFormData({ ...formData, targetEndDate: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block font-semibold text-slate-700 mb-1">Budget (£)</label>
+          <input
+            type="number"
+            placeholder="Not provided"
+            value={formData.budget ?? ''}
+            onChange={(e) => setFormData({ ...formData, budget: e.target.value === '' ? undefined : Number(e.target.value) })}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
           />
         </div>
       </DrawerSection>

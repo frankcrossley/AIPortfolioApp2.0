@@ -1065,7 +1065,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       targetDate: '2026-01-31',
     },
     valueHypothesis: {
-      status: 'Being measured',
+      status: 'Estimated',
       benefitCategory: 'Cost reduction',
       expectedBenefit: 'Avoided overtime and temporary resourcing during month-end close',
       calculationMethod: 'cost-reduction',
@@ -1095,7 +1095,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       targetValue: '60%',
     },
     valueHypothesis: {
-      status: 'Calculated',
+      status: 'Estimated',
       benefitCategory: 'Productivity',
       expectedBenefit: 'HR business partner time freed from routine policy questions',
       calculationMethod: 'productivity',
@@ -1116,7 +1116,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       targetValue: '-24%',
     },
     valueHypothesis: {
-      status: 'Calculated',
+      status: 'Estimated',
       benefitCategory: 'Cost reduction',
       expectedBenefit: 'Avoided downtime and overtime callouts across the field engineering team',
       calculationMethod: 'manual',
@@ -1170,7 +1170,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       strategicObjective: 'Improve operational efficiency',
     },
     valueHypothesis: {
-      status: 'Calculated',
+      status: 'Estimated',
       benefitCategory: 'Productivity',
       expectedBenefit: 'Engineer time saved searching documentation and architecture records',
       calculationMethod: 'productivity',
@@ -1264,7 +1264,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       strategicObjective: 'Accelerate revenue growth',
     },
     valueHypothesis: {
-      status: 'Calculated',
+      status: 'Estimated',
       benefitCategory: 'Productivity',
       expectedBenefit: 'Campaign asset production time saved',
       calculationMethod: 'productivity',
@@ -1282,7 +1282,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       strategicObjective: 'Improve operational efficiency',
     },
     valueHypothesis: {
-      status: 'Calculated',
+      status: 'Estimated',
       benefitCategory: 'Productivity',
       expectedBenefit: 'Time saved on manual ticket triage and routing',
       calculationMethod: 'productivity',
@@ -1300,7 +1300,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       strategicObjective: 'Accelerate revenue growth',
     },
     valueHypothesis: {
-      status: 'Being measured',
+      status: 'Estimated',
       benefitCategory: 'Productivity',
       expectedBenefit: 'Sales rep time saved on CRM data entry, redirected to selling activity',
       calculationMethod: 'productivity',
@@ -1333,7 +1333,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       strategicObjective: 'Improve operational efficiency',
     },
     valueHypothesis: {
-      status: 'Being measured',
+      status: 'Estimated',
       benefitCategory: 'Cost reduction',
       expectedBenefit: 'Reduced cost-to-serve across web, voice and WhatsApp support channels',
       calculationMethod: 'manual',
@@ -1384,7 +1384,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       strategicObjective: 'Improve employee experience',
     },
     valueHypothesis: {
-      status: 'Calculated',
+      status: 'Estimated',
       benefitCategory: 'Employee experience',
       expectedBenefit: 'Reduced attrition-related recruitment cost from improved engagement',
       calculationMethod: 'manual',
@@ -1408,7 +1408,7 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
       targetValue: '82%',
     },
     valueHypothesis: {
-      status: 'Being measured',
+      status: 'Estimated',
       benefitCategory: 'Productivity',
       expectedBenefit: 'Knowledge worker time saved on drafting, email and meeting synthesis',
       calculationMethod: 'productivity',

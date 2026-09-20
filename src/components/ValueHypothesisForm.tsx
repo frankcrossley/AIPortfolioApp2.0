@@ -11,8 +11,7 @@ import { usePortfolio } from '../context/PortfolioContext';
 const STATUS_OPTIONS: ValueHypothesisStatus[] = [
   'Not defined',
   'Hypothesis',
-  'Calculated',
-  'Being measured',
+  'Estimated',
   'Validated',
   'Realised',
 ];

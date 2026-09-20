@@ -13,11 +13,16 @@ import {
   Trash2,
   Copy,
   Pencil,
+  X,
+  UsersRound,
+  Link2,
 } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { Header } from '../components/Header';
 import { StatusBadge, TypeBadge, ValueStatusBadge, ConfidenceBadge } from '../components/StatusBadge';
 import { ValueHypothesisForm } from '../components/ValueHypothesisForm';
+import { CostRecordForm } from '../components/CostRecordForm';
+import { SearchableSelect } from '../components/SearchableSelect';
 import {
   EstateItem,
   EstateItemType,
@@ -28,19 +33,53 @@ import {
   ValueEvidenceStatus,
   ValueHypothesis,
   IntendedOutcome,
+  CostRecord,
 } from '../types';
-import { formatGBP, calculationBasisText, calculationMethodLabel, costRecordTotal } from '../lib/valueCalculations';
+import {
+  formatGBP,
+  calculationBasisText,
+  firstYearCostTotal,
+  developmentCostTotal,
+} from '../lib/valueCalculations';
 import { getRecommendedActions } from '../lib/recommendations';
+import { getCompleteness } from '../lib/completeness';
 
 interface ItemDetailViewProps {
   itemId: string;
+}
+
+/**
+ * Legacy records only carry flat devCost/opsCost/sharedCost fields, not a
+ * costRecord. To give every record the same Development/Operating view,
+ * derive an equivalent CostRecord from those flat fields when needed -
+ * legacy annualCost is exactly devCost + opsCost + sharedCost, so the
+ * mapping is lossless.
+ */
+function deriveDisplayCostRecord(item: EstateItem): CostRecord {
+  if (item.costRecord) return item.costRecord;
+  const hasOperating = item.opsCost !== undefined || item.sharedCost !== undefined;
+  const confirmed = item.annualCost !== undefined ? !item.isCostEstimated : undefined;
+  return {
+    developmentCost: item.devCost,
+    developmentBreakdown: {
+      internalEffort: item.internalTeamCost,
+      externalConsultancy: item.externalConsultancyCost,
+    },
+    developmentConfirmed: confirmed,
+    operatingCost: hasOperating ? (item.opsCost ?? 0) + (item.sharedCost ?? 0) : undefined,
+    operatingBreakdown: {
+      platformLicensing: item.sharedCost,
+    },
+    operatingConfirmed: confirmed,
+    sourceNotes: item.costCalculationBasis,
+  };
 }
 
 export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
   const {
     items,
     allRecords,
-    relationships,
+    teams,
     viewItem,
     viewPlatform,
     setActiveNav,
@@ -52,6 +91,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'cost' | 'outcomes' | 'relationships' | 'history'>('overview');
   const [isEditing, setIsEditing] = useState(false);
   const [isEditingOutcome, setIsEditingOutcome] = useState(false);
+  const [isEditingCost, setIsEditingCost] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // Find target item (may be an Estate Item or an Initiative adapted for display)
@@ -59,8 +99,9 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
     allRecords.find((i) => i.id === itemId) || allRecords.find((i) => i.id === 'agt-1') || allRecords[0];
 
   const recommendedActions = item ? getRecommendedActions(item) : [];
+  const completeness = item ? getCompleteness(item) : null;
 
-  // Editable state
+  // Basic details editable state (entity-conditional fields included)
   const [formData, setFormData] = useState({
     name: item?.name || '',
     subtitle: item?.subtitle || '',
@@ -70,22 +111,26 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
     technicalOwner: item?.technicalOwner || '',
     businessFunction: item?.businessFunction || '',
     priority: item?.priority || 'High',
-    annualCost: item?.annualCost ?? undefined as number | undefined,
-    devCost: item?.devCost ?? undefined as number | undefined,
-    opsCost: item?.opsCost ?? undefined as number | undefined,
-    sharedCost: item?.sharedCost ?? undefined as number | undefined,
-    externalConsultancyCost: item?.externalConsultancyCost ?? undefined as number | undefined,
-    internalTeamCost: item?.internalTeamCost ?? undefined as number | undefined,
-    costCalculationBasis: item?.costCalculationBasis || '',
-    isCostEstimated: item?.isCostEstimated ?? false,
     intendedOutcome: item?.intendedOutcome || '',
     valueEvidenceStatus: item?.valueEvidenceStatus || 'Documented',
     lifecycleStage: item?.lifecycleStage || 'Production',
     status: item?.status || 'Active',
     dataClassification: item?.dataClassification || 'Internal',
+    provider: item?.provider || '',
+    productName: item?.productName || '',
+    licensingModel: item?.licensingModel || '',
+    contractRenewalDate: item?.contractRenewalDate || '',
+    sponsor: item?.sponsor || '',
+    deliveryOwner: item?.deliveryOwner || '',
+    startDate: item?.startDate || '',
+    targetEndDate: item?.targetEndDate || '',
+    budget: item?.budget ?? undefined as number | undefined,
   });
 
-  // Value hypothesis + outcome editable state (Outcomes tab)
+  // Cost tab draft
+  const [costDraft, setCostDraft] = useState<CostRecord>(item ? deriveDisplayCostRecord(item) : { developmentCost: undefined });
+
+  // Value hypothesis + outcome editable state (Purpose & Outcomes tab)
   const [outcomeDraft, setOutcomeDraft] = useState<IntendedOutcome>(
     item?.outcome || { name: '', category: '' }
   );
@@ -93,7 +138,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
     item?.valueHypothesis || { status: 'Not defined' }
   );
 
-  // Sync formData whenever target item changes
+  // Sync all draft/form state whenever target item changes
   useEffect(() => {
     if (item) {
       setFormData({
@@ -105,25 +150,29 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
         technicalOwner: item.technicalOwner || '',
         businessFunction: item.businessFunction || '',
         priority: item.priority || 'High',
-        annualCost: item.annualCost,
-        devCost: item.devCost,
-        opsCost: item.opsCost,
-        sharedCost: item.sharedCost,
-        externalConsultancyCost: item.externalConsultancyCost,
-        internalTeamCost: item.internalTeamCost,
-        costCalculationBasis: item.costCalculationBasis || '',
-        isCostEstimated: item.isCostEstimated ?? false,
         intendedOutcome: item.intendedOutcome || '',
         valueEvidenceStatus: item.valueEvidenceStatus || 'Documented',
         lifecycleStage: item.lifecycleStage || 'Production',
         status: item.status || 'Active',
         dataClassification: item.dataClassification || 'Internal',
+        provider: item.provider || '',
+        productName: item.productName || '',
+        licensingModel: item.licensingModel || '',
+        contractRenewalDate: item.contractRenewalDate || '',
+        sponsor: item.sponsor || '',
+        deliveryOwner: item.deliveryOwner || '',
+        startDate: item.startDate || '',
+        targetEndDate: item.targetEndDate || '',
+        budget: item.budget,
       });
       setOutcomeDraft(item.outcome || { name: '', category: '' });
       setValueHypothesisDraft(item.valueHypothesis || { status: 'Not defined' });
+      setCostDraft(deriveDisplayCostRecord(item));
       setIsEditing(false);
       setIsEditingOutcome(false);
+      setIsEditingCost(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id]);
 
   if (!item) {
@@ -137,24 +186,39 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
     );
   }
 
-  // Related items lookup
-  const incomingRels = relationships.filter((r) => r.targetId === item.id);
-  const outgoingRels = relationships.filter((r) => r.sourceId === item.id);
+  const isPlatform = item.type === 'Platform';
+  const isProjectOrProgramme = item.type === 'Initiative';
 
-  // Find platform item if any
+  // Related items lookup
   const platformItem = items.find(
     (i) => i.id === item.platformId || (i.type === 'Platform' && i.name === item.platformName)
   );
-
-  // Find related application
   const appItem = items.find(
     (i) => i.id === item.applicationId || (i.type === 'Application' && i.name === item.applicationName)
   );
-
-  // Find related initiative (lives in the separate initiatives array, so search allRecords)
   const initiativeItem = allRecords.find(
     (i) => i.id === item.initiativeId || (i.type === 'Initiative' && i.name === item.initiativeName)
   );
+  const dependsOnItems = (item.relatedEstateItemIds || [])
+    .map((id) => allRecords.find((i) => i.id === id))
+    .filter((i): i is EstateItem => !!i);
+
+  // Platform-only: what uses this platform
+  const usingItems = isPlatform ? allRecords.filter((i) => i.platformId === item.id || i.platformName === item.name) : [];
+  const usingTeams = Array.from(new Set(usingItems.map((i) => i.team).filter((t): t is string => !!t)));
+
+  // Programme-only: assets it is delivering
+  const deliveredAssets = isProjectOrProgramme
+    ? allRecords.filter((i) => i.initiativeId === item.id || i.initiativeName === item.name)
+    : [];
+
+  const platformOptions = items.filter((i) => i.type === 'Platform').map((p) => ({ id: p.id, label: p.name }));
+  const applicationOptions = items.filter((i) => i.type === 'Application').map((a) => ({ id: a.id, label: a.name }));
+  const initiativeOptions = allRecords.filter((i) => i.type === 'Initiative').map((p) => ({ id: p.id, label: p.name }));
+  const teamOptions = teams.filter((t) => t.status === 'Active').map((t) => ({ id: t.id, label: t.name }));
+  const dependencyOptions = allRecords
+    .filter((i) => i.id !== item.id && !(item.relatedEstateItemIds || []).includes(i.id))
+    .map((i) => ({ id: i.id, label: i.name, sublabel: i.type }));
 
   const getItemIcon = (type: EstateItemType) => {
     switch (type) {
@@ -183,20 +247,20 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
       technicalOwner: formData.technicalOwner,
       businessFunction: formData.businessFunction,
       priority: formData.priority as Priority,
-      annualCost: formData.annualCost === undefined ? undefined : Number(formData.annualCost),
-      devCost: formData.devCost === undefined ? undefined : Number(formData.devCost),
-      opsCost: formData.opsCost === undefined ? undefined : Number(formData.opsCost),
-      sharedCost: formData.sharedCost === undefined ? undefined : Number(formData.sharedCost),
-      externalConsultancyCost:
-        formData.externalConsultancyCost === undefined ? undefined : Number(formData.externalConsultancyCost),
-      internalTeamCost: formData.internalTeamCost === undefined ? undefined : Number(formData.internalTeamCost),
-      costCalculationBasis: formData.costCalculationBasis,
-      isCostEstimated: formData.isCostEstimated,
       intendedOutcome: formData.intendedOutcome,
       valueEvidenceStatus: formData.valueEvidenceStatus as ValueEvidenceStatus,
       lifecycleStage: formData.lifecycleStage as LifecycleStage,
       status: formData.status as ItemStatus,
       dataClassification: formData.dataClassification as DataClassification,
+      provider: isPlatform ? formData.provider : item.provider,
+      productName: isPlatform ? formData.productName : item.productName,
+      licensingModel: isPlatform ? formData.licensingModel : item.licensingModel,
+      contractRenewalDate: isPlatform ? formData.contractRenewalDate : item.contractRenewalDate,
+      sponsor: isProjectOrProgramme ? formData.sponsor : item.sponsor,
+      deliveryOwner: isProjectOrProgramme ? formData.deliveryOwner : item.deliveryOwner,
+      startDate: isProjectOrProgramme ? formData.startDate : item.startDate,
+      targetEndDate: isProjectOrProgramme ? formData.targetEndDate : item.targetEndDate,
+      budget: isProjectOrProgramme ? formData.budget : item.budget,
     });
     setIsEditing(false);
   };
@@ -205,8 +269,24 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
     updateItem(item.id, {
       outcome: outcomeDraft,
       valueHypothesis: valueHypothesisDraft,
+      intendedOutcome: outcomeDraft.description || item.intendedOutcome,
     });
     setIsEditingOutcome(false);
+  };
+
+  const handleSaveCost = () => {
+    const bothConfirmed = !!costDraft.developmentConfirmed && !!costDraft.operatingConfirmed;
+    updateItem(item.id, {
+      costRecord: costDraft,
+      annualCost: firstYearCostTotal(costDraft),
+      devCost: developmentCostTotal(costDraft),
+      opsCost: costDraft.operatingCost,
+      sharedCost: costDraft.operatingBreakdown?.platformLicensing,
+      externalConsultancyCost: costDraft.developmentBreakdown?.externalConsultancy,
+      internalTeamCost: costDraft.developmentBreakdown?.internalEffort,
+      isCostEstimated: !bothConfirmed,
+    });
+    setIsEditingCost(false);
   };
 
   const handleCopyId = () => {
@@ -215,9 +295,34 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
     setShowMoreMenu(false);
   };
 
+  const setRelationship = (field: 'platformId' | 'applicationId' | 'initiativeId', options: { id: string; label: string }[]) =>
+    (id: string | undefined) => {
+      const picked = options.find((o) => o.id === id);
+      if (field === 'platformId') {
+        updateItem(item.id, { platformId: id, platformName: picked?.label });
+      } else if (field === 'applicationId') {
+        updateItem(item.id, { applicationId: id, applicationName: picked?.label });
+      } else {
+        updateItem(item.id, { initiativeId: id, initiativeName: picked?.label });
+      }
+    };
+
+  const setTeam = (id: string | undefined) => {
+    const picked = teamOptions.find((o) => o.id === id);
+    updateItem(item.id, { teamId: id, team: picked?.label });
+  };
+
+  const addDependency = (id: string | undefined) => {
+    if (!id) return;
+    updateItem(item.id, { relatedEstateItemIds: [...(item.relatedEstateItemIds || []), id] });
+  };
+
+  const removeDependency = (id: string) => {
+    updateItem(item.id, { relatedEstateItemIds: (item.relatedEstateItemIds || []).filter((d) => d !== id) });
+  };
+
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-y-auto">
-      {/* Header with Breadcrumb matching screenshot 4 */}
       <Header
         title=""
         breadcrumbs={[
@@ -269,14 +374,14 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
         }
       />
 
-      {/* Item Title Bar matching screenshot 4 */}
-      <div className="bg-white border-b border-slate-200 px-8 py-5">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200/80 flex items-center justify-center shrink-0">
+      {/* Item Title Bar */}
+      <div className="bg-white border-b border-slate-200 px-8 py-4">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="flex items-start gap-4 min-w-0">
+            <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-200/80 flex items-center justify-center shrink-0">
               {getItemIcon(item.type)}
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="text-xl font-bold text-slate-900 tracking-tight">
                   {item.name}
@@ -284,20 +389,44 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                 <TypeBadge type={item.type} size="md" />
                 <StatusBadge status={item.lifecycleStage} size="md" />
               </div>
-              <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+              <p className="text-xs text-slate-500 mt-1 max-w-2xl truncate">
                 {item.subtitle || item.description}
               </p>
             </div>
           </div>
+
+          {/* Completeness indicator - prominent but compact, never blocks saving */}
+          {completeness && (
+            <div className="shrink-0 flex items-center gap-2.5 pl-1 md:pl-0">
+              <div className="w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${
+                    completeness.percent >= 100
+                      ? 'bg-emerald-500'
+                      : completeness.percent >= 70
+                      ? 'bg-blue-500'
+                      : completeness.percent >= 40
+                      ? 'bg-amber-500'
+                      : 'bg-rose-400'
+                  }`}
+                  style={{ width: `${completeness.percent}%` }}
+                />
+              </div>
+              <div className="text-[11px] leading-tight">
+                <div className="font-bold text-slate-800">{completeness.percent}% complete</div>
+                <div className="text-slate-400">{completeness.label}</div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 5 Tab Navigation matching specification */}
-        <div className="max-w-7xl mx-auto flex items-center gap-6 mt-6 -mb-5 text-xs font-medium border-b border-slate-200">
+        {/* Tab Navigation */}
+        <div className="max-w-7xl mx-auto flex items-center gap-6 mt-5 -mb-4 text-xs font-medium border-b border-slate-200">
           {(
             [
               { id: 'overview', label: 'Overview' },
-              { id: 'cost', label: 'Cost' },
-              { id: 'outcomes', label: 'Outcomes' },
+              { id: 'cost', label: 'Costs' },
+              { id: 'outcomes', label: 'Purpose & Outcomes' },
               { id: 'relationships', label: 'Relationships' },
               { id: 'history', label: 'History' },
             ] as const
@@ -318,15 +447,15 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
       </div>
 
       {/* Tab Body */}
-      <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
-        {/* Contextual recommendations - not a completeness score, just what matters next for this record type/stage */}
-        {recommendedActions.length > 0 && (
-          <div className="bg-amber-50/60 rounded-xl border border-amber-200/80 p-5 shadow-xs">
+      <div className="p-6 max-w-7xl w-full mx-auto space-y-5">
+        {/* Contextual recommendations - concrete next steps for what's missing */}
+        {completeness && completeness.percent < 100 && recommendedActions.length > 0 && (
+          <div className="bg-amber-50/60 rounded-xl border border-amber-200/80 px-5 py-3.5 shadow-xs">
             <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
               <Sparkles className="w-4 h-4 text-amber-600" />
-              Initial record — additional information recommended
+              {completeness.label} — a few things would make this more useful
             </div>
-            <div className="flex flex-wrap gap-2 mt-3">
+            <div className="flex flex-wrap gap-2 mt-2.5">
               {recommendedActions.map((action) => (
                 <button
                   key={action.id}
@@ -334,6 +463,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                     setActiveTab(action.tab);
                     if (action.openEdit) setIsEditing(true);
                     if (action.tab === 'outcomes') setIsEditingOutcome(true);
+                    if (action.tab === 'cost') setIsEditingCost(true);
                   }}
                   className="px-2.5 py-1.5 rounded-md bg-white border border-amber-200 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
                 >
@@ -344,7 +474,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
           </div>
         )}
 
-        {/* Inline Edit Mode */}
+        {/* Inline Edit Mode - basic details, entity-conditional fields only */}
         {isEditing && (
           <div className="bg-white rounded-xl border border-blue-200 p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -414,88 +544,6 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                 />
               </div>
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Annual Cost (£)</label>
-                <input
-                  type="number"
-                  value={formData.annualCost ?? ''}
-                  onChange={(e) => setFormData({ ...formData, annualCost: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  placeholder="Not provided"
-                  className="w-full p-2 border border-slate-200 rounded-md"
-                />
-              </div>
-              <div className="flex items-center gap-2 pt-6">
-                <input
-                  type="checkbox"
-                  id="edit-isCostEstimated"
-                  checked={formData.isCostEstimated}
-                  onChange={(e) => setFormData({ ...formData, isCostEstimated: e.target.checked })}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <label htmlFor="edit-isCostEstimated" className="text-slate-700 font-medium">
-                  Cost is estimated (not confirmed)
-                </label>
-              </div>
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Development Cost (£)</label>
-                <input
-                  type="number"
-                  value={formData.devCost ?? ''}
-                  onChange={(e) => setFormData({ ...formData, devCost: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  placeholder="Not provided"
-                  className="w-full p-2 border border-slate-200 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Platform / Shared Cost (£)</label>
-                <input
-                  type="number"
-                  value={formData.sharedCost ?? ''}
-                  onChange={(e) => setFormData({ ...formData, sharedCost: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  placeholder="Not provided"
-                  className="w-full p-2 border border-slate-200 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Operational Cost (£)</label>
-                <input
-                  type="number"
-                  value={formData.opsCost ?? ''}
-                  onChange={(e) => setFormData({ ...formData, opsCost: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  placeholder="Not provided"
-                  className="w-full p-2 border border-slate-200 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">External Consultancy (£)</label>
-                <input
-                  type="number"
-                  value={formData.externalConsultancyCost ?? ''}
-                  onChange={(e) => setFormData({ ...formData, externalConsultancyCost: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  placeholder="Not provided"
-                  className="w-full p-2 border border-slate-200 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Internal Team Cost (£)</label>
-                <input
-                  type="number"
-                  value={formData.internalTeamCost ?? ''}
-                  onChange={(e) => setFormData({ ...formData, internalTeamCost: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  placeholder="Not provided"
-                  className="w-full p-2 border border-slate-200 rounded-md"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-slate-700 font-semibold mb-1">Cost calculation basis</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Allocated runtime compute + seat licenses, prorated"
-                  value={formData.costCalculationBasis}
-                  onChange={(e) => setFormData({ ...formData, costCalculationBasis: e.target.value })}
-                  className="w-full p-2 border border-slate-200 rounded-md"
-                />
-              </div>
-              <div>
                 <label className="block text-slate-700 font-semibold mb-1">Lifecycle Stage</label>
                 <select
                   value={formData.lifecycleStage}
@@ -555,111 +603,331 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
               <div className="md:col-span-2">
                 <label className="block text-slate-700 font-semibold mb-1">Description</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="w-full p-2 border border-slate-200 rounded-md"
                 />
               </div>
+
+              {isPlatform && (
+                <>
+                  <div className="md:col-span-2 pt-2 border-t border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Platform details
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Provider</label>
+                    <input
+                      type="text"
+                      value={formData.provider}
+                      onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
+                      className="w-full p-2 border border-slate-200 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Product name</label>
+                    <input
+                      type="text"
+                      value={formData.productName}
+                      onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                      className="w-full p-2 border border-slate-200 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Licensing model</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Per-seat subscription"
+                      value={formData.licensingModel}
+                      onChange={(e) => setFormData({ ...formData, licensingModel: e.target.value })}
+                      className="w-full p-2 border border-slate-200 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Contract / renewal date</label>
+                    <input
+                      type="text"
+                      placeholder="Optional"
+                      value={formData.contractRenewalDate}
+                      onChange={(e) => setFormData({ ...formData, contractRenewalDate: e.target.value })}
+                      className="w-full p-2 border border-slate-200 rounded-md"
+                    />
+                  </div>
+                </>
+              )}
+
+              {isProjectOrProgramme && (
+                <>
+                  <div className="md:col-span-2 pt-2 border-t border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Programme details
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Sponsor</label>
+                    <input
+                      type="text"
+                      value={formData.sponsor}
+                      onChange={(e) => setFormData({ ...formData, sponsor: e.target.value })}
+                      className="w-full p-2 border border-slate-200 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Delivery owner</label>
+                    <input
+                      type="text"
+                      value={formData.deliveryOwner}
+                      onChange={(e) => setFormData({ ...formData, deliveryOwner: e.target.value })}
+                      className="w-full p-2 border border-slate-200 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Start date</label>
+                    <input
+                      type="text"
+                      placeholder="Optional"
+                      value={formData.startDate}
+                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                      className="w-full p-2 border border-slate-200 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Target end date</label>
+                    <input
+                      type="text"
+                      placeholder="Optional"
+                      value={formData.targetEndDate}
+                      onChange={(e) => setFormData({ ...formData, targetEndDate: e.target.value })}
+                      className="w-full p-2 border border-slate-200 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Budget (£)</label>
+                    <input
+                      type="number"
+                      placeholder="Not provided"
+                      value={formData.budget ?? ''}
+                      onChange={(e) => setFormData({ ...formData, budget: e.target.value === '' ? undefined : Number(e.target.value) })}
+                      className="w-full p-2 border border-slate-200 rounded-md"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
 
-        {/* TAB 1: OVERVIEW matching screenshot 4 */}
+        {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Key Information card */}
-            <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-5">
-              <div className="border-b border-slate-100 pb-3">
-                <h2 className="text-sm font-bold text-slate-900">Key information</h2>
-              </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Left Column */}
+            <div className="lg:col-span-7 space-y-5">
+              <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+                <div className="border-b border-slate-100 pb-2.5">
+                  <h2 className="text-sm font-bold text-slate-900">Key information</h2>
+                </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6 text-xs">
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Owner</span>
-                  <span className="font-semibold text-slate-900 flex items-center gap-1.5">
-                    {item.businessOwner || (
-                      <span className="text-amber-600 font-medium">Not assigned</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6 text-xs">
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Owner</span>
+                    <span className="font-semibold text-slate-900 flex items-center gap-1.5">
+                      {item.businessOwner || (
+                        <span className="text-amber-600 font-medium">Not assigned</span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Technical Owner</span>
+                    <span className="font-semibold text-slate-900">
+                      {item.technicalOwner || <span className="text-amber-600 font-medium">Not assigned</span>}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Department</span>
+                    <span className="font-semibold text-slate-900">{item.department}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Platform</span>
+                    {platformItem ? (
+                      <button
+                        onClick={() => viewPlatform(platformItem.id)}
+                        className="font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 hover:underline"
+                      >
+                        {platformItem.name}
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    ) : item.platformName ? (
+                      <span className="font-semibold text-blue-600">{item.platformName}</span>
+                    ) : (
+                      <span className="text-slate-400">Standalone / None</span>
                     )}
-                  </span>
-                </div>
+                  </div>
 
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Technical Owner</span>
-                  <span className="font-semibold text-slate-900">
-                    {item.technicalOwner || <span className="text-amber-600 font-medium">Not assigned</span>}
-                  </span>
-                </div>
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Lifecycle stage</span>
+                    <StatusBadge status={item.lifecycleStage} />
+                  </div>
 
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Department</span>
-                  <span className="font-semibold text-slate-900">{item.department}</span>
-                </div>
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Status</span>
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      {item.status}
+                    </span>
+                  </div>
 
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Platform</span>
-                  {platformItem ? (
-                    <button
-                      onClick={() => viewPlatform(platformItem.id)}
-                      className="font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 hover:underline"
-                    >
-                      {platformItem.name}
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-                  ) : item.platformName ? (
-                    <span className="font-semibold text-blue-600">{item.platformName}</span>
-                  ) : (
-                    <span className="text-slate-400">Standalone / None</span>
-                  )}
-                </div>
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Business function</span>
+                    <span className="font-semibold text-slate-900">
+                      {item.businessFunction || <span className="text-slate-400 font-normal">Not provided</span>}
+                    </span>
+                  </div>
 
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Lifecycle stage</span>
-                  <StatusBadge status={item.lifecycleStage} />
-                </div>
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Data classification</span>
+                    <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                      {item.dataClassification || 'Internal'}
+                    </span>
+                  </div>
 
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Status</span>
-                  <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    {item.status}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Business function</span>
-                  <span className="font-semibold text-slate-900">
-                    {item.businessFunction || <span className="text-slate-400 font-normal">Not provided</span>}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Data classification</span>
-                  <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                    {item.dataClassification || 'Internal'}
-                  </span>
-                </div>
-
-                <div className="sm:col-span-2 pt-2 border-t border-slate-100">
-                  <span className="text-slate-400 block mb-1">Description</span>
-                  <p className="text-slate-700 leading-relaxed text-xs">
-                    {item.description}
-                  </p>
+                  <div className="sm:col-span-2 pt-2 border-t border-slate-100">
+                    <span className="text-slate-400 block mb-1">Description</span>
+                    <p className="text-slate-700 leading-relaxed text-xs">
+                      {item.description}
+                    </p>
+                  </div>
                 </div>
               </div>
+
+              {/* Platform-specific detail card */}
+              {isPlatform && (
+                <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+                  <div className="border-b border-slate-100 pb-2.5">
+                    <h2 className="text-sm font-bold text-slate-900">Platform details</h2>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6 text-xs">
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Provider</span>
+                      <span className="font-semibold text-slate-900">
+                        {item.provider || <span className="text-slate-400 font-normal">Not provided</span>}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Product name</span>
+                      <span className="font-semibold text-slate-900">
+                        {item.productName || <span className="text-slate-400 font-normal">Not provided</span>}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Licensing model</span>
+                      <span className="font-semibold text-slate-900">
+                        {item.licensingModel || <span className="text-slate-400 font-normal">Not provided</span>}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Contract / renewal date</span>
+                      <span className="font-semibold text-slate-900">
+                        {item.contractRenewalDate || <span className="text-slate-400 font-normal">Not provided</span>}
+                      </span>
+                    </div>
+                    <div className="sm:col-span-2 pt-2 border-t border-slate-100">
+                      <span className="text-slate-400 block mb-1">Used by ({usingItems.length})</span>
+                      {usingItems.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {usingItems.slice(0, 8).map((u) => (
+                            <button
+                              key={u.id}
+                              onClick={() => viewItem(u.id)}
+                              className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-[11px] font-medium transition-colors"
+                            >
+                              {u.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 font-normal">Not used by any other record yet</span>
+                      )}
+                      {usingTeams.length > 0 && (
+                        <p className="text-[11px] text-slate-400 mt-1.5">Teams: {usingTeams.join(', ')}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Programme-specific detail card */}
+              {isProjectOrProgramme && (
+                <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+                  <div className="border-b border-slate-100 pb-2.5">
+                    <h2 className="text-sm font-bold text-slate-900">Programme details</h2>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6 text-xs">
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Sponsor</span>
+                      <span className="font-semibold text-slate-900">
+                        {item.sponsor || <span className="text-amber-600 font-medium">Not assigned</span>}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Delivery owner</span>
+                      <span className="font-semibold text-slate-900">
+                        {item.deliveryOwner || <span className="text-slate-400 font-normal">Not assigned</span>}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Start date</span>
+                      <span className="font-semibold text-slate-900">
+                        {item.startDate || <span className="text-slate-400 font-normal">Not provided</span>}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Target end date</span>
+                      <span className="font-semibold text-slate-900">
+                        {item.targetEndDate || <span className="text-slate-400 font-normal">Not provided</span>}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Budget</span>
+                      <span className="font-semibold text-slate-900">{formatGBP(item.budget)}</span>
+                    </div>
+                    <div className="sm:col-span-2 pt-2 border-t border-slate-100">
+                      <span className="text-slate-400 block mb-1">Connected assets being delivered ({deliveredAssets.length})</span>
+                      {deliveredAssets.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {deliveredAssets.map((a) => (
+                            <button
+                              key={a.id}
+                              onClick={() => viewItem(a.id)}
+                              className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-700 text-[11px] font-medium transition-colors"
+                            >
+                              {a.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 font-normal">No assets linked yet</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Right Column: Relationships & Cost Cards matching screenshot 4 */}
-            <div className="lg:col-span-5 space-y-6">
-              {/* Relationships Card */}
-              <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs">
-                <div className="border-b border-slate-100 pb-3 mb-4 flex items-center justify-between">
+            {/* Right Column: Relationships & Cost summary */}
+            <div className="lg:col-span-5 space-y-5">
+              <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
+                <div className="border-b border-slate-100 pb-2.5 mb-3.5 flex items-center justify-between">
                   <h2 className="text-sm font-bold text-slate-900">Relationships</h2>
-                  <span className="text-[11px] text-slate-400">Connected entities</span>
+                  <button
+                    onClick={() => setActiveTab('relationships')}
+                    className="text-[11px] text-blue-600 hover:underline font-medium"
+                  >
+                    Manage
+                  </button>
                 </div>
 
-                <div className="space-y-3 text-xs">
-                  {/* Built on */}
+                <div className="space-y-2.5 text-xs">
                   <div
                     onClick={() => platformItem && viewPlatform(platformItem.id)}
                     className={`flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100 transition-colors ${
@@ -675,10 +943,8 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                         {platformItem?.name || item.platformName || <span className="text-slate-400 font-normal">None</span>}
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-medium">Platform</span>
                   </div>
 
-                  {/* Delivered through / Part of */}
                   <div
                     onClick={() => initiativeItem && viewItem(initiativeItem.id)}
                     className={`flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100 transition-colors ${
@@ -694,10 +960,8 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                         {initiativeItem?.name || item.initiativeName || <span className="text-slate-400 font-normal">None</span>}
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-medium">Project</span>
                   </div>
 
-                  {/* Uses */}
                   <div
                     onClick={() => appItem && viewItem(appItem.id)}
                     className={`flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100 transition-colors ${
@@ -713,10 +977,8 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                         {appItem?.name || item.applicationName || <span className="text-slate-400 font-normal">None</span>}
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-medium">Application</span>
                   </div>
 
-                  {/* Supported by / Depends on */}
                   <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-16">
@@ -726,142 +988,173 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                         {item.team || <span className="text-slate-400 font-normal">Not assigned</span>}
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-400">Team</span>
                   </div>
                 </div>
               </div>
 
-              {/* Annual Cost (Attributed) Card matching screenshot 4 */}
-              <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs">
-                <div className="border-b border-slate-100 pb-3 mb-4">
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Annual cost (attributed)
-                  </h2>
+              {/* Cost summary card */}
+              <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
+                <div className="border-b border-slate-100 pb-2.5 mb-3.5 flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-slate-900">Cost summary</h2>
+                  <button
+                    onClick={() => setActiveTab('cost')}
+                    className="text-[11px] text-blue-600 hover:underline font-medium"
+                  >
+                    Details
+                  </button>
                 </div>
 
-                <div className="text-2xl font-bold text-slate-900 tracking-tight">
-                  {formatGBP(item.annualCost)}
-                  {item.annualCost !== undefined && item.isCostEstimated && (
-                    <span className="text-xs font-medium text-amber-600 ml-2 align-middle">(estimated)</span>
-                  )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wide font-semibold">Total first-year</div>
+                    <div className="text-lg font-bold text-slate-900 mt-0.5">{formatGBP(firstYearCostTotal(costDraft))}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wide font-semibold">Recurring annual</div>
+                    <div className="text-lg font-bold text-slate-900 mt-0.5">
+                      {costDraft.operatingCost !== undefined ? formatGBP(costDraft.operatingCost) : (
+                        <span className="text-base font-semibold text-slate-400">Not yet estimated</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mt-2 font-medium">
-                  <span>{formatGBP(item.devCost)} development</span>
-                  <span>•</span>
-                  <span>{formatGBP(item.opsCost)} operational</span>
-                  <span>•</span>
-                  <span>{formatGBP(item.sharedCost)} platform/shared</span>
-                </div>
-
-                <div className="mt-4 p-2.5 rounded bg-slate-50 border border-slate-100 text-[11px] text-slate-500">
-                  {item.costCalculationBasis ||
-                    'Basic estimated costing. No detailed cost allocation model has been applied yet.'}
-                </div>
+                <p className="text-[11px] text-slate-400 mt-3 pt-3 border-t border-slate-100">
+                  Development cost is one-off; operating cost recurs every year.
+                </p>
               </div>
             </div>
           </div>
         )}
 
-        {/* TAB 2: COST */}
+        {/* TAB 2: COSTS */}
         {activeTab === 'cost' && (
-          <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-5">
             <div className="border-b border-slate-100 pb-3 flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">Cost & Budget Allocation</h2>
+                <h2 className="text-sm font-bold text-slate-900">Costs</h2>
                 <p className="text-xs text-slate-500">
-                  Basic estimated costing model. No detailed cost allocation ledger has been implemented yet.
+                  Development cost is a one-off spend. Operating cost recurs every year. Figures are only "Confirmed" once someone marks them so.
                 </p>
               </div>
-              {item.costRecord ? (
-                <span
-                  className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                    item.costRecord.status === 'Not recorded'
-                      ? 'bg-slate-100 text-slate-500 border-slate-200'
-                      : item.costRecord.status === 'Estimated'
-                      ? 'bg-amber-50 text-amber-700 border-amber-200/80'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
-                  }`}
-                >
-                  {item.costRecord.status}
-                </span>
-              ) : (
-                item.annualCost !== undefined && (
-                  <span
-                    className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                      item.isCostEstimated
-                        ? 'bg-amber-50 text-amber-700 border-amber-200/80'
-                        : 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
-                    }`}
-                  >
-                    {item.isCostEstimated ? 'Estimated' : 'Confirmed'}
-                  </span>
-                )
-              )}
+              <button
+                onClick={() => {
+                  if (isEditingCost) setCostDraft(deriveDisplayCostRecord(item));
+                  else setCostDraft(deriveDisplayCostRecord(item));
+                  setIsEditingCost(!isEditingCost);
+                }}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-md shadow-xs hover:bg-slate-50 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                <span>{isEditingCost ? 'Cancel' : 'Edit'}</span>
+              </button>
             </div>
 
-            {item.costRecord ? (
-              item.costRecord.status === 'Not recorded' ? (
-                <div className="p-6 bg-slate-50 border border-slate-200 rounded-lg text-center">
-                  <p className="text-xs text-slate-500">No financial information recorded</p>
+            {isEditingCost ? (
+              <div className="space-y-4">
+                <CostRecordForm value={costDraft} onChange={setCostDraft} />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setIsEditingCost(false)}
+                    className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveCost}
+                    className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700"
+                  >
+                    Save costs
+                  </button>
                 </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <CostTile label="Development cost" value={item.costRecord.developmentCost} note="One-off build and delivery effort" />
-                    <CostTile label="Platform / shared cost" value={item.costRecord.platformSharedCost} note="Attributed enterprise platform licensing" />
-                    <CostTile label="Operational cost" value={item.costRecord.annualOperatingCost} note="Ongoing run and infrastructure maintenance" />
-                    <CostTile label="Internal resource cost" value={item.costRecord.internalResourceCost} note="Internal resourcing at blended rate" />
-                    <CostTile label="External consultancy" value={item.costRecord.externalConsultancyCost} note="Third-party delivery spend" />
-                    <div className="p-4 bg-blue-50/60 rounded-lg border border-blue-200/80">
-                      <div className="text-xs text-blue-900 font-semibold">Total (from entered figures)</div>
-                      <div className="text-xl font-bold text-blue-900 mt-1">{formatGBP(costRecordTotal(item.costRecord))}</div>
-                      <p className="text-[11px] text-blue-800/80 mt-1">
-                        {item.costRecord.period ? `${item.costRecord.period} · ` : ''}
-                        {item.costRecord.confidence ? `${item.costRecord.confidence} confidence` : 'Confidence not set'}
-                      </p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Development cost card */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Development · one-off</div>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                          costDraft.developmentConfirmed
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                            : 'bg-amber-50 text-amber-700 border-amber-200/80'
+                        }`}
+                      >
+                        {costDraft.developmentConfirmed ? 'Confirmed' : 'Estimated'}
+                      </span>
+                    </div>
+                    <div className="text-2xl font-bold text-slate-900">{formatGBP(developmentCostTotal(costDraft))}</div>
+                    <div className="grid grid-cols-1 gap-1.5 text-[11px] pt-2 border-t border-slate-200">
+                      <CostLine label="Internal team effort" value={costDraft.developmentBreakdown?.internalEffort} />
+                      <CostLine label="External consultancy" value={costDraft.developmentBreakdown?.externalConsultancy} />
+                      <CostLine label="Other" value={costDraft.developmentBreakdown?.other} />
+                    </div>
+                    {costDraft.developmentBasis && (
+                      <p className="text-[11px] text-slate-500 pt-2 border-t border-slate-200">{costDraft.developmentBasis}</p>
+                    )}
+                  </div>
+
+                  {/* Operating cost card */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Operating · recurring annual</div>
+                      {costDraft.operatingCost !== undefined && (
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                            costDraft.operatingConfirmed
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                              : 'bg-amber-50 text-amber-700 border-amber-200/80'
+                          }`}
+                        >
+                          {costDraft.operatingConfirmed ? 'Confirmed' : 'Estimated'}
+                        </span>
+                      )}
+                    </div>
+                    <div className={`text-2xl font-bold ${costDraft.operatingCost === undefined ? 'text-slate-400 text-lg font-semibold' : 'text-slate-900'}`}>
+                      {costDraft.operatingCost !== undefined ? formatGBP(costDraft.operatingCost) : 'Not yet estimated'}
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5 text-[11px] pt-2 border-t border-slate-200">
+                      <CostLine label="Platform / licensing" value={costDraft.operatingBreakdown?.platformLicensing} />
+                      <CostLine label="Infrastructure" value={costDraft.operatingBreakdown?.infrastructure} />
+                      <CostLine label="Support & maintenance" value={costDraft.operatingBreakdown?.supportMaintenance} />
+                      <CostLine label="Other" value={costDraft.operatingBreakdown?.other} />
                     </div>
                   </div>
-                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
-                    <span className="font-semibold text-slate-700">Source or notes: </span>
-                    {item.costRecord.sourceNotes || 'Not provided.'}
-                  </div>
-                </>
-              )
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <CostTile label="Development cost" value={item.devCost} note="One-off build and prompt validation effort" />
-                  <CostTile label="Platform / shared cost" value={item.sharedCost} note="Attributed enterprise platform licensing" />
-                  <CostTile label="Operational cost" value={item.opsCost} note="Ongoing run and infrastructure maintenance" />
-                  <CostTile label="External consultancy" value={item.externalConsultancyCost} note="Third-party delivery spend" />
-                  <CostTile label="Internal team cost" value={item.internalTeamCost} note="Internal resourcing at blended rate" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-blue-50/60 rounded-lg border border-blue-200/80">
-                    <div className="text-xs text-blue-900 font-semibold">Total estimated annual cost</div>
-                    <div className="text-xl font-bold text-blue-900 mt-1">{formatGBP(item.annualCost)}</div>
-                    <p className="text-[11px] text-blue-800/80 mt-1">
-                      {item.isCostEstimated ? 'Estimated, not yet confirmed' : 'Confirmed figure'}
-                    </p>
+                    <div className="text-xs text-blue-900 font-semibold">Total first-year cost</div>
+                    <div className="text-xl font-bold text-blue-900 mt-1">{formatGBP(firstYearCostTotal(costDraft))}</div>
+                    <p className="text-[11px] text-blue-800/80 mt-1">Development + first year of operating cost</p>
+                  </div>
+                  <div className="p-4 bg-blue-50/60 rounded-lg border border-blue-200/80">
+                    <div className="text-xs text-blue-900 font-semibold">Recurring annual cost</div>
+                    <div className="text-xl font-bold text-blue-900 mt-1">
+                      {costDraft.operatingCost !== undefined ? formatGBP(costDraft.operatingCost) : 'Not yet estimated'}
+                    </div>
+                    <p className="text-[11px] text-blue-800/80 mt-1">What this costs to run every year after year one</p>
                   </div>
                 </div>
 
                 <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
-                  <span className="font-semibold text-slate-700">Calculation basis: </span>
-                  {item.costCalculationBasis || 'Not provided - no calculation basis has been recorded for this figure.'}
+                  <span className="font-semibold text-slate-700">Source or notes: </span>
+                  {costDraft.sourceNotes || 'Not provided.'}
                 </div>
-              </>
+              </div>
             )}
           </div>
         )}
 
-        {/* TAB 3: OUTCOMES */}
+        {/* TAB 3: PURPOSE & OUTCOMES */}
         {activeTab === 'outcomes' && (
           <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-6">
             <div className="border-b border-slate-100 pb-3 flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">Intended Outcome & Value Hypothesis</h2>
+                <h2 className="text-sm font-bold text-slate-900">Purpose & Outcomes</h2>
                 <p className="text-xs text-slate-500">
-                  What this investment is intended to achieve, how the benefit is calculated, and how confident we are.
+                  Why this exists and what it's meant to achieve - kept lightweight, not a formal business case.
                 </p>
               </div>
               <button
@@ -883,36 +1176,29 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
               <div className="space-y-6">
                 <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-4">
                   <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Intended outcome</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div className="grid grid-cols-1 gap-4 text-xs">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Outcome name</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Intended outcome</label>
                       <input
                         type="text"
+                        placeholder="e.g. Reduce Tier-1 support handling time"
                         value={outcomeDraft.name}
                         onChange={(e) => setOutcomeDraft({ ...outcomeDraft, name: e.target.value })}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Strategic objective</label>
-                      <input
-                        type="text"
-                        value={outcomeDraft.strategicObjective || ''}
-                        onChange={(e) => setOutcomeDraft({ ...outcomeDraft, strategicObjective: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
                       <label className="block font-semibold text-slate-700 mb-1">Description</label>
                       <textarea
                         rows={2}
+                        placeholder="What should be true if this succeeds?"
                         value={outcomeDraft.description || ''}
                         onChange={(e) => setOutcomeDraft({ ...outcomeDraft, description: e.target.value })}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Measurement unit</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Success measure (optional)</label>
                       <input
                         type="text"
                         placeholder="e.g. % tickets auto-resolved"
@@ -921,30 +1207,11 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
                       />
                     </div>
-                    <div />
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Baseline value</label>
-                      <input
-                        type="text"
-                        value={outcomeDraft.baselineValue || ''}
-                        onChange={(e) => setOutcomeDraft({ ...outcomeDraft, baselineValue: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Target value</label>
-                      <input
-                        type="text"
-                        value={outcomeDraft.targetValue || ''}
-                        onChange={(e) => setOutcomeDraft({ ...outcomeDraft, targetValue: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
                   </div>
                 </div>
 
                 <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
-                  <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Value hypothesis</div>
+                  <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Benefit estimate (optional)</div>
                   <ValueHypothesisForm value={valueHypothesisDraft} onChange={setValueHypothesisDraft} />
                 </div>
 
@@ -959,27 +1226,30 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                     onClick={handleSaveOutcome}
                     className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700"
                   >
-                    Save value hypothesis
+                    Save
                   </button>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-slate-400 text-xs block mb-1">Business purpose</span>
+                  <p className="text-xs text-slate-700 leading-relaxed">{item.description}</p>
+                </div>
+
                 <div className="p-4 rounded-lg bg-blue-50/50 border border-blue-100">
                   <div className="flex items-center gap-2 text-xs font-semibold text-blue-900 mb-1">
                     <Target className="w-4 h-4 text-blue-600" />
-                    Intended Outcome
+                    Intended outcome
                   </div>
                   <p className="text-xs text-slate-700 leading-relaxed">
-                    {item.outcome?.description || item.intendedOutcome || (
-                      <span className="text-slate-400">Not defined - this is an information gap.</span>
+                    {item.outcome?.description || item.outcome?.name || item.intendedOutcome || (
+                      <span className="text-slate-400">Not defined yet.</span>
                     )}
                   </p>
-                  {item.outcome && (item.outcome.baselineValue || item.outcome.targetValue) && (
+                  {item.outcome?.measurementUnit && (
                     <div className="flex items-center gap-4 mt-3 pt-3 border-t border-blue-100 text-[11px] text-blue-900">
-                      {item.outcome.measurementUnit && <span className="font-semibold">{item.outcome.measurementUnit}</span>}
-                      {item.outcome.baselineValue && <span>Baseline: {item.outcome.baselineValue}</span>}
-                      {item.outcome.targetValue && <span>Target: {item.outcome.targetValue}</span>}
+                      <span className="font-semibold">Success measure: {item.outcome.measurementUnit}</span>
                     </div>
                   )}
                 </div>
@@ -996,17 +1266,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-200">
                     <div>
-                      <span className="text-slate-400 block mb-0.5">Benefit category</span>
-                      <span className="font-semibold text-slate-800">
-                        {item.valueHypothesis?.benefitCategory || 'Not set'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block mb-0.5">Confidence level</span>
-                      <ConfidenceBadge level={item.valueHypothesis?.confidenceLevel} />
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block mb-0.5">Estimated annual benefit</span>
+                      <span className="text-slate-400 block mb-0.5">Benefit estimate</span>
                       <span className="font-bold text-slate-900">
                         {item.valueHypothesis?.estimatedAnnualBenefit !== undefined
                           ? formatGBP(item.valueHypothesis.estimatedAnnualBenefit)
@@ -1014,10 +1274,8 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block mb-0.5">Calculation method</span>
-                      <span className="font-semibold text-slate-800">
-                        {calculationMethodLabel(item.valueHypothesis?.calculationMethod)}
-                      </span>
+                      <span className="text-slate-400 block mb-0.5">Confidence level</span>
+                      <ConfidenceBadge level={item.valueHypothesis?.confidenceLevel} />
                     </div>
                   </div>
 
@@ -1028,50 +1286,10 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                     </div>
                   )}
 
-                  {item.valueHypothesis?.assumptions && (
-                    <div className="pt-2 border-t border-slate-200">
-                      <span className="text-slate-400 block mb-0.5">Assumptions</span>
-                      <span className="text-slate-700">{item.valueHypothesis.assumptions}</span>
-                    </div>
-                  )}
-
                   <p className="text-[11px] text-slate-400 pt-2 border-t border-slate-200">
-                    This is an estimate based on stated assumptions, not a guaranteed or realised outcome, unless
-                    status is "Validated" or "Realised".
+                    This is an estimate, not a guaranteed or realised outcome, unless status is "Validated" or "Realised".
                   </p>
                 </div>
-
-                {item.measurement && (
-                  <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2">
-                    <div className="font-semibold text-slate-900">Measurement status</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <div>
-                        <span className="text-slate-400 block mb-0.5">Baseline</span>
-                        <span className="font-semibold text-slate-800">{item.measurement.baseline || '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block mb-0.5">Current</span>
-                        <span className="font-semibold text-slate-800">{item.measurement.current || '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block mb-0.5">Target</span>
-                        <span className="font-semibold text-slate-800">{item.measurement.target || '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block mb-0.5">Evidence status</span>
-                        <span className="font-semibold text-slate-800">{item.measurement.evidenceStatus || '—'}</span>
-                      </div>
-                    </div>
-                    {item.measurement.lastMeasuredDate && (
-                      <p className="text-slate-500 pt-2 border-t border-slate-200">
-                        Last measured {item.measurement.lastMeasuredDate}
-                        {(item.measurement.lastMeasuredDaysAgo ?? 0) >= 90 && (
-                          <span className="text-amber-600 font-medium"> · overdue for a refresh</span>
-                        )}
-                      </p>
-                    )}
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -1079,52 +1297,79 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
 
         {/* TAB 4: RELATIONSHIPS */}
         {activeTab === 'relationships' && (
-          <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-5">
             <div className="border-b border-slate-100 pb-3">
-              <h2 className="text-sm font-bold text-slate-900">Data Flows & System Graph</h2>
-              <p className="text-xs text-slate-500">Structured integration dependencies and data flows.</p>
+              <h2 className="text-sm font-bold text-slate-900">Relationships</h2>
+              <p className="text-xs text-slate-500">Only meaningful connections are shown. Add or remove links as they become relevant.</p>
             </div>
 
-            <div className="space-y-3">
-              {outgoingRels.concat(incomingRels).map((rel) => {
-                const isOut = rel.sourceId === item.id;
-                const peerId = isOut ? rel.targetId : rel.sourceId;
-                const peerItem = allRecords.find((i) => i.id === peerId);
+            <div className="space-y-3 max-w-xl">
+              <RelationshipRow
+                icon={<Server className="w-3.5 h-3.5 text-blue-600" />}
+                label="Built on platform"
+                selectedId={item.platformId}
+                selectedLabel={item.platformName}
+                options={platformOptions}
+                onChange={setRelationship('platformId', platformOptions)}
+                onView={platformItem ? () => viewPlatform(platformItem.id) : undefined}
+              />
+              <RelationshipRow
+                icon={<Layers className="w-3.5 h-3.5 text-sky-600" />}
+                label="Uses application"
+                selectedId={item.applicationId}
+                selectedLabel={item.applicationName}
+                options={applicationOptions}
+                onChange={setRelationship('applicationId', applicationOptions)}
+                onView={appItem ? () => viewItem(appItem.id) : undefined}
+              />
+              <RelationshipRow
+                icon={<Kanban className="w-3.5 h-3.5 text-purple-600" />}
+                label="Part of project or programme"
+                selectedId={item.initiativeId}
+                selectedLabel={item.initiativeName}
+                options={initiativeOptions}
+                onChange={setRelationship('initiativeId', initiativeOptions)}
+                onView={initiativeItem ? () => viewItem(initiativeItem.id) : undefined}
+              />
+              <RelationshipRow
+                icon={<UsersRound className="w-3.5 h-3.5 text-slate-500" />}
+                label="Supported by team"
+                selectedId={item.teamId}
+                selectedLabel={item.team}
+                options={teamOptions}
+                onChange={setTeam}
+              />
 
-                return (
-                  <div
-                    key={rel.id}
-                    onClick={() => peerItem && viewItem(peerItem.id)}
-                    className="p-3.5 rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-blue-50/50 hover:border-blue-300 transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-semibold text-[10px] uppercase">
-                          {rel.type}
-                        </span>
-                        <span className="font-bold text-slate-900">
-                          {peerItem?.name || 'Unknown Item'}
-                        </span>
-                        {peerItem && <TypeBadge type={peerItem.type} />}
-                      </div>
-                      {rel.dataFlowDetails && (
-                        <div className="text-[11px] text-slate-500 mt-1.5 space-x-3">
-                          <span>
-                            <strong>Data:</strong> {rel.dataFlowDetails.dataExchanged}
-                          </span>
-                          <span>
-                            <strong>Protocol:</strong> {rel.dataFlowDetails.integrationType}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <span className="text-blue-600 font-semibold text-xs flex items-center gap-1 shrink-0">
-                      View node <ExternalLink className="w-3 h-3" />
-                    </span>
+              <div>
+                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  <Link2 className="w-3.5 h-3.5 text-slate-500" />
+                  Depends on another system
+                </label>
+                <SearchableSelect
+                  value={undefined}
+                  onChange={addDependency}
+                  options={dependencyOptions}
+                  placeholder="Search estate items..."
+                  emptyLabel="Add a dependency..."
+                />
+                {dependsOnItems.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {dependsOnItems.map((dep) => (
+                      <span
+                        key={dep.id}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 border border-slate-200 text-[11px] text-slate-700"
+                      >
+                        <button onClick={() => viewItem(dep.id)} className="hover:text-blue-600 hover:underline">
+                          {dep.name}
+                        </button>
+                        <button onClick={() => removeDependency(dep.id)} className="text-slate-400 hover:text-slate-600">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
                   </div>
-                );
-              })}
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1133,15 +1378,15 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
         {activeTab === 'history' && (
           <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-6">
             <div className="border-b border-slate-100 pb-3">
-              <h2 className="text-sm font-bold text-slate-900">Audit Trail & Governance History</h2>
-              <p className="text-xs text-slate-500">Record lifecycle changes, approvals, and ownership handoffs.</p>
+              <h2 className="text-sm font-bold text-slate-900">History</h2>
+              <p className="text-xs text-slate-500">Meaningful record changes - created, owner changed, lifecycle stage changed, cost updated, status changed.</p>
             </div>
 
             <div className="space-y-4 text-xs border-l-2 border-slate-200 pl-4 ml-2">
               <div className="relative">
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 absolute -left-[21px] top-1" />
                 <div className="font-semibold text-slate-900">Promoted to Production</div>
-                <div className="text-slate-500 text-[11px]">10 Nov 2025 by Elena Rostova (Governance Sign-off)</div>
+                <div className="text-slate-500 text-[11px]">10 Nov 2025 by Elena Rostova</div>
               </div>
 
               <div className="relative">
@@ -1152,7 +1397,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
 
               <div className="relative">
                 <div className="w-2.5 h-2.5 rounded-full bg-slate-400 absolute -left-[21px] top-1" />
-                <div className="font-semibold text-slate-900">Initial Registration into AI Portfolio</div>
+                <div className="font-semibold text-slate-900">Created</div>
                 <div className="text-slate-500 text-[11px]">01 Aug 2025 by Jonathan Vance</div>
               </div>
             </div>
@@ -1163,12 +1408,36 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
   );
 };
 
-const CostTile: React.FC<{ label: string; value?: number; note: string }> = ({ label, value, note }) => (
-  <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-    <div className="text-xs text-slate-500">{label}</div>
-    <div className={`text-xl font-bold mt-1 ${value === undefined ? 'text-slate-400 text-base font-medium' : 'text-slate-900'}`}>
-      {formatGBP(value)}
+const CostLine: React.FC<{ label: string; value?: number }> = ({ label, value }) => (
+  <div className="flex items-center justify-between">
+    <span className="text-slate-500">{label}</span>
+    <span className={value === undefined ? 'text-slate-400' : 'font-semibold text-slate-800'}>{formatGBP(value)}</span>
+  </div>
+);
+
+interface RelationshipRowProps {
+  icon: React.ReactNode;
+  label: string;
+  selectedId?: string;
+  selectedLabel?: string;
+  options: { id: string; label: string }[];
+  onChange: (id: string | undefined) => void;
+  onView?: () => void;
+}
+
+const RelationshipRow: React.FC<RelationshipRowProps> = ({ icon, label, selectedId, selectedLabel, options, onChange, onView }) => (
+  <div className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+    <div className="flex items-center gap-2 w-44 shrink-0">
+      {icon}
+      <span className="text-[11px] font-semibold text-slate-500">{label}</span>
     </div>
-    <p className="text-[11px] text-slate-400 mt-1">{note}</p>
+    <div className="flex-1">
+      <SearchableSelect value={selectedId} onChange={onChange} options={options} placeholder={`Search...`} emptyLabel="None" />
+    </div>
+    {onView && selectedLabel && (
+      <button onClick={onView} className="text-blue-600 hover:text-blue-700 shrink-0" title={`View ${selectedLabel}`}>
+        <ExternalLink className="w-3.5 h-3.5" />
+      </button>
+    )}
   </div>
 );
