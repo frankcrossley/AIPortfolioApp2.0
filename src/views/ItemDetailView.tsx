@@ -9,15 +9,15 @@ import {
   Kanban,
   Beaker,
   ExternalLink,
-  DollarSign,
   Target,
-  Clock,
   Trash2,
   Copy,
+  Pencil,
 } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { Header } from '../components/Header';
-import { StatusBadge, TypeBadge } from '../components/StatusBadge';
+import { StatusBadge, TypeBadge, ValueStatusBadge, ConfidenceBadge } from '../components/StatusBadge';
+import { ValueHypothesisForm } from '../components/ValueHypothesisForm';
 import {
   EstateItem,
   EstateItemType,
@@ -26,7 +26,10 @@ import {
   Priority,
   DataClassification,
   ValueEvidenceStatus,
+  ValueHypothesis,
+  IntendedOutcome,
 } from '../types';
+import { formatGBP, calculationBasisText, calculationMethodLabel } from '../lib/valueCalculations';
 
 interface ItemDetailViewProps {
   itemId: string;
@@ -46,6 +49,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
 
   const [activeTab, setActiveTab] = useState<'overview' | 'cost' | 'outcomes' | 'relationships' | 'history'>('overview');
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingOutcome, setIsEditingOutcome] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // Find target item
@@ -61,16 +65,28 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
     technicalOwner: item?.technicalOwner || '',
     businessFunction: item?.businessFunction || '',
     priority: item?.priority || 'High',
-    annualCost: item?.annualCost || 0,
-    devCost: item?.devCost || 0,
-    opsCost: item?.opsCost || 0,
-    sharedCost: item?.sharedCost || 0,
+    annualCost: item?.annualCost ?? undefined as number | undefined,
+    devCost: item?.devCost ?? undefined as number | undefined,
+    opsCost: item?.opsCost ?? undefined as number | undefined,
+    sharedCost: item?.sharedCost ?? undefined as number | undefined,
+    externalConsultancyCost: item?.externalConsultancyCost ?? undefined as number | undefined,
+    internalTeamCost: item?.internalTeamCost ?? undefined as number | undefined,
+    costCalculationBasis: item?.costCalculationBasis || '',
+    isCostEstimated: item?.isCostEstimated ?? false,
     intendedOutcome: item?.intendedOutcome || '',
     valueEvidenceStatus: item?.valueEvidenceStatus || 'Documented',
     lifecycleStage: item?.lifecycleStage || 'Production',
     status: item?.status || 'Active',
     dataClassification: item?.dataClassification || 'Internal',
   });
+
+  // Value hypothesis + outcome editable state (Outcomes tab)
+  const [outcomeDraft, setOutcomeDraft] = useState<IntendedOutcome>(
+    item?.outcome || { name: '', category: '' }
+  );
+  const [valueHypothesisDraft, setValueHypothesisDraft] = useState<ValueHypothesis>(
+    item?.valueHypothesis || { status: 'Not defined' }
+  );
 
   // Sync formData whenever target item changes
   useEffect(() => {
@@ -84,17 +100,24 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
         technicalOwner: item.technicalOwner || '',
         businessFunction: item.businessFunction || '',
         priority: item.priority || 'High',
-        annualCost: item.annualCost || 0,
-        devCost: item.devCost || 0,
-        opsCost: item.opsCost || 0,
-        sharedCost: item.sharedCost || 0,
+        annualCost: item.annualCost,
+        devCost: item.devCost,
+        opsCost: item.opsCost,
+        sharedCost: item.sharedCost,
+        externalConsultancyCost: item.externalConsultancyCost,
+        internalTeamCost: item.internalTeamCost,
+        costCalculationBasis: item.costCalculationBasis || '',
+        isCostEstimated: item.isCostEstimated ?? false,
         intendedOutcome: item.intendedOutcome || '',
         valueEvidenceStatus: item.valueEvidenceStatus || 'Documented',
         lifecycleStage: item.lifecycleStage || 'Production',
         status: item.status || 'Active',
         dataClassification: item.dataClassification || 'Internal',
       });
+      setOutcomeDraft(item.outcome || { name: '', category: '' });
+      setValueHypothesisDraft(item.valueHypothesis || { status: 'Not defined' });
       setIsEditing(false);
+      setIsEditingOutcome(false);
     }
   }, [item?.id]);
 
@@ -155,10 +178,15 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
       technicalOwner: formData.technicalOwner,
       businessFunction: formData.businessFunction,
       priority: formData.priority as Priority,
-      annualCost: Number(formData.annualCost),
-      devCost: Number(formData.devCost),
-      opsCost: Number(formData.opsCost),
-      sharedCost: Number(formData.sharedCost),
+      annualCost: formData.annualCost === undefined ? undefined : Number(formData.annualCost),
+      devCost: formData.devCost === undefined ? undefined : Number(formData.devCost),
+      opsCost: formData.opsCost === undefined ? undefined : Number(formData.opsCost),
+      sharedCost: formData.sharedCost === undefined ? undefined : Number(formData.sharedCost),
+      externalConsultancyCost:
+        formData.externalConsultancyCost === undefined ? undefined : Number(formData.externalConsultancyCost),
+      internalTeamCost: formData.internalTeamCost === undefined ? undefined : Number(formData.internalTeamCost),
+      costCalculationBasis: formData.costCalculationBasis,
+      isCostEstimated: formData.isCostEstimated,
       intendedOutcome: formData.intendedOutcome,
       valueEvidenceStatus: formData.valueEvidenceStatus as ValueEvidenceStatus,
       lifecycleStage: formData.lifecycleStage as LifecycleStage,
@@ -166,6 +194,14 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
       dataClassification: formData.dataClassification as DataClassification,
     });
     setIsEditing(false);
+  };
+
+  const handleSaveOutcome = () => {
+    updateItem(item.id, {
+      outcome: outcomeDraft,
+      valueHypothesis: valueHypothesisDraft,
+    });
+    setIsEditingOutcome(false);
   };
 
   const handleCopyId = () => {
@@ -351,8 +387,81 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                 <label className="block text-slate-700 font-semibold mb-1">Annual Cost (£)</label>
                 <input
                   type="number"
-                  value={formData.annualCost}
-                  onChange={(e) => setFormData({ ...formData, annualCost: Number(e.target.value) })}
+                  value={formData.annualCost ?? ''}
+                  onChange={(e) => setFormData({ ...formData, annualCost: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  placeholder="Not provided"
+                  className="w-full p-2 border border-slate-200 rounded-md"
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-6">
+                <input
+                  type="checkbox"
+                  id="edit-isCostEstimated"
+                  checked={formData.isCostEstimated}
+                  onChange={(e) => setFormData({ ...formData, isCostEstimated: e.target.checked })}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="edit-isCostEstimated" className="text-slate-700 font-medium">
+                  Cost is estimated (not confirmed)
+                </label>
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Development Cost (£)</label>
+                <input
+                  type="number"
+                  value={formData.devCost ?? ''}
+                  onChange={(e) => setFormData({ ...formData, devCost: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  placeholder="Not provided"
+                  className="w-full p-2 border border-slate-200 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Platform / Shared Cost (£)</label>
+                <input
+                  type="number"
+                  value={formData.sharedCost ?? ''}
+                  onChange={(e) => setFormData({ ...formData, sharedCost: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  placeholder="Not provided"
+                  className="w-full p-2 border border-slate-200 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Operational Cost (£)</label>
+                <input
+                  type="number"
+                  value={formData.opsCost ?? ''}
+                  onChange={(e) => setFormData({ ...formData, opsCost: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  placeholder="Not provided"
+                  className="w-full p-2 border border-slate-200 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">External Consultancy (£)</label>
+                <input
+                  type="number"
+                  value={formData.externalConsultancyCost ?? ''}
+                  onChange={(e) => setFormData({ ...formData, externalConsultancyCost: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  placeholder="Not provided"
+                  className="w-full p-2 border border-slate-200 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Internal Team Cost (£)</label>
+                <input
+                  type="number"
+                  value={formData.internalTeamCost ?? ''}
+                  onChange={(e) => setFormData({ ...formData, internalTeamCost: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  placeholder="Not provided"
+                  className="w-full p-2 border border-slate-200 rounded-md"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-slate-700 font-semibold mb-1">Cost calculation basis</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Allocated runtime compute + seat licenses, prorated"
+                  value={formData.costCalculationBasis}
+                  onChange={(e) => setFormData({ ...formData, costCalculationBasis: e.target.value })}
                   className="w-full p-2 border border-slate-200 rounded-md"
                 />
               </div>
@@ -448,7 +557,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                 <div>
                   <span className="text-slate-400 block mb-0.5">Technical Owner</span>
                   <span className="font-semibold text-slate-900">
-                    {item.technicalOwner || 'David Chen'}
+                    {item.technicalOwner || <span className="text-amber-600 font-medium">Not specified</span>}
                   </span>
                 </div>
 
@@ -490,7 +599,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                 <div>
                   <span className="text-slate-400 block mb-0.5">Business function</span>
                   <span className="font-semibold text-slate-900">
-                    {item.businessFunction || 'Customer Support Operations'}
+                    {item.businessFunction || <span className="text-slate-400 font-normal">Not provided</span>}
                   </span>
                 </div>
 
@@ -533,7 +642,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                       </span>
                       <Server className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                       <span className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
-                        {platformItem?.name || item.platformName || 'Azure AI Foundry'}
+                        {platformItem?.name || item.platformName || <span className="text-slate-400 font-normal">None</span>}
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-400 font-medium">Platform</span>
@@ -552,7 +661,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                       </span>
                       <Kanban className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                       <span className="font-semibold text-slate-800 group-hover:text-purple-600 transition-colors">
-                        {initiativeItem?.name || item.initiativeName || 'Customer Service Transformation'}
+                        {initiativeItem?.name || item.initiativeName || <span className="text-slate-400 font-normal">None</span>}
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-400 font-medium">Project</span>
@@ -571,7 +680,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                       </span>
                       <Layers className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                       <span className="font-semibold text-slate-800 group-hover:text-sky-600 transition-colors">
-                        {appItem?.name || item.applicationName || 'Salesforce'}
+                        {appItem?.name || item.applicationName || <span className="text-slate-400 font-normal">None</span>}
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-400 font-medium">Application</span>
@@ -584,7 +693,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                         Team
                       </span>
                       <span className="font-semibold text-slate-800">
-                        {item.team || 'IT Support Team'}
+                        {item.team || <span className="text-slate-400 font-normal">Not specified</span>}
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-400">Team</span>
@@ -601,19 +710,23 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
                 </div>
 
                 <div className="text-2xl font-bold text-slate-900 tracking-tight">
-                  £{(item.annualCost || 155000).toLocaleString()}
+                  {formatGBP(item.annualCost)}
+                  {item.annualCost !== undefined && item.isCostEstimated && (
+                    <span className="text-xs font-medium text-amber-600 ml-2 align-middle">(estimated)</span>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-3 text-xs text-slate-500 mt-2 font-medium">
-                  <span>£{Math.round((item.devCost || 90000) / 1000)}k development</span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mt-2 font-medium">
+                  <span>{formatGBP(item.devCost)} development</span>
                   <span>•</span>
-                  <span>£{Math.round((item.opsCost || 45000) / 1000)}k operational</span>
+                  <span>{formatGBP(item.opsCost)} operational</span>
                   <span>•</span>
-                  <span>£{Math.round((item.sharedCost || 20000) / 1000)}k shared</span>
+                  <span>{formatGBP(item.sharedCost)} platform/shared</span>
                 </div>
 
                 <div className="mt-4 p-2.5 rounded bg-slate-50 border border-slate-100 text-[11px] text-slate-500">
-                  Estimated prototype figure based on allocated runtime compute and seat licenses.
+                  {item.costCalculationBasis ||
+                    'Basic estimated costing. No detailed cost allocation model has been applied yet.'}
                 </div>
               </div>
             </div>
@@ -623,35 +736,44 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
         {/* TAB 2: COST */}
         {activeTab === 'cost' && (
           <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-6">
-            <div className="border-b border-slate-100 pb-3">
-              <h2 className="text-sm font-bold text-slate-900">Cost & Budget Allocation</h2>
-              <p className="text-xs text-slate-500">Prototype cost breakdown across development, hosting, and platform consumption.</p>
+            <div className="border-b border-slate-100 pb-3 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Cost & Budget Allocation</h2>
+                <p className="text-xs text-slate-500">
+                  Basic estimated costing model. No detailed cost allocation ledger has been implemented yet.
+                </p>
+              </div>
+              {item.annualCost !== undefined && (
+                <span
+                  className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                    item.isCostEstimated
+                      ? 'bg-amber-50 text-amber-700 border-amber-200/80'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                  }`}
+                >
+                  {item.isCostEstimated ? 'Estimated' : 'Confirmed'}
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-xs text-slate-500">Development Cost</div>
-                <div className="text-xl font-bold text-slate-900 mt-1">
-                  £{(item.devCost || 90000).toLocaleString()}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">One-off engineering & prompt validation</p>
+              <CostTile label="Development cost" value={item.devCost} note="One-off build and prompt validation effort" />
+              <CostTile label="Platform / shared cost" value={item.sharedCost} note="Attributed enterprise platform licensing" />
+              <CostTile label="Operational cost" value={item.opsCost} note="Ongoing run and infrastructure maintenance" />
+              <CostTile label="External consultancy" value={item.externalConsultancyCost} note="Third-party delivery spend" />
+              <CostTile label="Internal team cost" value={item.internalTeamCost} note="Internal resourcing at blended rate" />
+              <div className="p-4 bg-blue-50/60 rounded-lg border border-blue-200/80">
+                <div className="text-xs text-blue-900 font-semibold">Total estimated annual cost</div>
+                <div className="text-xl font-bold text-blue-900 mt-1">{formatGBP(item.annualCost)}</div>
+                <p className="text-[11px] text-blue-800/80 mt-1">
+                  {item.isCostEstimated ? 'Estimated, not yet confirmed' : 'Confirmed figure'}
+                </p>
               </div>
+            </div>
 
-              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-xs text-slate-500">Operational & Cloud Run</div>
-                <div className="text-xl font-bold text-slate-900 mt-1">
-                  £{(item.opsCost || 45000).toLocaleString()}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">Token throughput and infrastructure maintenance</p>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-xs text-slate-500">Shared Platform Fee</div>
-                <div className="text-xl font-bold text-slate-900 mt-1">
-                  £{(item.sharedCost || 20000).toLocaleString()}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">Attributed enterprise platform licensing</p>
-              </div>
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
+              <span className="font-semibold text-slate-700">Calculation basis: </span>
+              {item.costCalculationBasis || 'Not provided - no calculation basis has been recorded for this figure.'}
             </div>
           </div>
         )}
@@ -659,35 +781,223 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
         {/* TAB 3: OUTCOMES */}
         {activeTab === 'outcomes' && (
           <div className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-6">
-            <div className="border-b border-slate-100 pb-3">
-              <h2 className="text-sm font-bold text-slate-900">Target Business Outcomes & Evidence</h2>
-              <p className="text-xs text-slate-500">Strategic goals, documented business metrics, and ROI validation.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-blue-50/50 border border-blue-100">
-                <div className="flex items-center gap-2 text-xs font-semibold text-blue-900 mb-1">
-                  <Target className="w-4 h-4 text-blue-600" />
-                  Intended Business Outcome
-                </div>
-                <p className="text-xs text-slate-700 leading-relaxed">
-                  {item.intendedOutcome ||
-                    'Resolve 38% of Tier-1 inbound support inquiries without human escalation while maintaining CSAT > 92%.'}
+            <div className="border-b border-slate-100 pb-3 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Intended Outcome & Value Hypothesis</h2>
+                <p className="text-xs text-slate-500">
+                  What this investment is intended to achieve, how the benefit is calculated, and how confident we are.
                 </p>
               </div>
+              <button
+                onClick={() => {
+                  if (isEditingOutcome) {
+                    setOutcomeDraft(item.outcome || { name: '', category: '' });
+                    setValueHypothesisDraft(item.valueHypothesis || { status: 'Not defined' });
+                  }
+                  setIsEditingOutcome(!isEditingOutcome);
+                }}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-md shadow-xs hover:bg-slate-50 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                <span>{isEditingOutcome ? 'Cancel' : 'Edit'}</span>
+              </button>
+            </div>
 
-              <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2">
-                <div className="font-semibold text-slate-900">Value Evidence Status</div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 font-semibold text-xs">
-                    {item.valueEvidenceStatus}
-                  </span>
-                  <span className="text-slate-500">
-                    Quarterly business review documented with Head of Customer Support.
-                  </span>
+            {isEditingOutcome ? (
+              <div className="space-y-6">
+                <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-4">
+                  <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Intended outcome</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Outcome name</label>
+                      <input
+                        type="text"
+                        value={outcomeDraft.name}
+                        onChange={(e) => setOutcomeDraft({ ...outcomeDraft, name: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Strategic objective</label>
+                      <input
+                        type="text"
+                        value={outcomeDraft.strategicObjective || ''}
+                        onChange={(e) => setOutcomeDraft({ ...outcomeDraft, strategicObjective: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block font-semibold text-slate-700 mb-1">Description</label>
+                      <textarea
+                        rows={2}
+                        value={outcomeDraft.description || ''}
+                        onChange={(e) => setOutcomeDraft({ ...outcomeDraft, description: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Measurement unit</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. % tickets auto-resolved"
+                        value={outcomeDraft.measurementUnit || ''}
+                        onChange={(e) => setOutcomeDraft({ ...outcomeDraft, measurementUnit: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div />
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Baseline value</label>
+                      <input
+                        type="text"
+                        value={outcomeDraft.baselineValue || ''}
+                        onChange={(e) => setOutcomeDraft({ ...outcomeDraft, baselineValue: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Target value</label>
+                      <input
+                        type="text"
+                        value={outcomeDraft.targetValue || ''}
+                        onChange={(e) => setOutcomeDraft({ ...outcomeDraft, targetValue: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Value hypothesis</div>
+                  <ValueHypothesisForm value={valueHypothesisDraft} onChange={setValueHypothesisDraft} />
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setIsEditingOutcome(false)}
+                    className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveOutcome}
+                    className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700"
+                  >
+                    Save value hypothesis
+                  </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-blue-50/50 border border-blue-100">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-blue-900 mb-1">
+                    <Target className="w-4 h-4 text-blue-600" />
+                    Intended Outcome
+                  </div>
+                  <p className="text-xs text-slate-700 leading-relaxed">
+                    {item.outcome?.description || item.intendedOutcome || (
+                      <span className="text-slate-400">Not defined - this is an information gap.</span>
+                    )}
+                  </p>
+                  {item.outcome && (item.outcome.baselineValue || item.outcome.targetValue) && (
+                    <div className="flex items-center gap-4 mt-3 pt-3 border-t border-blue-100 text-[11px] text-blue-900">
+                      {item.outcome.measurementUnit && <span className="font-semibold">{item.outcome.measurementUnit}</span>}
+                      {item.outcome.baselineValue && <span>Baseline: {item.outcome.baselineValue}</span>}
+                      {item.outcome.targetValue && <span>Target: {item.outcome.targetValue}</span>}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-900">Value status</span>
+                    <ValueStatusBadge status={item.valueHypothesis?.status || 'Not defined'} size="md" />
+                  </div>
+
+                  {item.valueHypothesis?.expectedBenefit && (
+                    <p className="text-slate-600">{item.valueHypothesis.expectedBenefit}</p>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-200">
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Benefit category</span>
+                      <span className="font-semibold text-slate-800">
+                        {item.valueHypothesis?.benefitCategory || 'Not set'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Confidence level</span>
+                      <ConfidenceBadge level={item.valueHypothesis?.confidenceLevel} />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Estimated annual benefit</span>
+                      <span className="font-bold text-slate-900">
+                        {item.valueHypothesis?.estimatedAnnualBenefit !== undefined
+                          ? formatGBP(item.valueHypothesis.estimatedAnnualBenefit)
+                          : 'Not quantified'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Calculation method</span>
+                      <span className="font-semibold text-slate-800">
+                        {calculationMethodLabel(item.valueHypothesis?.calculationMethod)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {calculationBasisText(item.valueHypothesis) && (
+                    <div className="pt-2 border-t border-slate-200">
+                      <span className="text-slate-400 block mb-0.5">Calculation basis</span>
+                      <span className="text-slate-700">{calculationBasisText(item.valueHypothesis)}</span>
+                    </div>
+                  )}
+
+                  {item.valueHypothesis?.assumptions && (
+                    <div className="pt-2 border-t border-slate-200">
+                      <span className="text-slate-400 block mb-0.5">Assumptions</span>
+                      <span className="text-slate-700">{item.valueHypothesis.assumptions}</span>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-slate-400 pt-2 border-t border-slate-200">
+                    This is an estimate based on stated assumptions, not a guaranteed or realised outcome, unless
+                    status is "Validated" or "Realised".
+                  </p>
+                </div>
+
+                {item.measurement && (
+                  <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2">
+                    <div className="font-semibold text-slate-900">Measurement status</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">Baseline</span>
+                        <span className="font-semibold text-slate-800">{item.measurement.baseline || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">Current</span>
+                        <span className="font-semibold text-slate-800">{item.measurement.current || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">Target</span>
+                        <span className="font-semibold text-slate-800">{item.measurement.target || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">Evidence status</span>
+                        <span className="font-semibold text-slate-800">{item.measurement.evidenceStatus || '—'}</span>
+                      </div>
+                    </div>
+                    {item.measurement.lastMeasuredDate && (
+                      <p className="text-slate-500 pt-2 border-t border-slate-200">
+                        Last measured {item.measurement.lastMeasuredDate}
+                        {(item.measurement.lastMeasuredDaysAgo ?? 0) >= 90 && (
+                          <span className="text-amber-600 font-medium"> · overdue for a refresh</span>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -776,3 +1086,13 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
     </div>
   );
 };
+
+const CostTile: React.FC<{ label: string; value?: number; note: string }> = ({ label, value, note }) => (
+  <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+    <div className="text-xs text-slate-500">{label}</div>
+    <div className={`text-xl font-bold mt-1 ${value === undefined ? 'text-slate-400 text-base font-medium' : 'text-slate-900'}`}>
+      {formatGBP(value)}
+    </div>
+    <p className="text-[11px] text-slate-400 mt-1">{note}</p>
+  </div>
+);

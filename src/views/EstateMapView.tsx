@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search,
   ZoomIn,
@@ -19,6 +19,8 @@ import { usePortfolio } from '../context/PortfolioContext';
 import { StatusBadge, TypeBadge } from '../components/StatusBadge';
 import { EstateItem } from '../types';
 
+const MAX_NODES_PER_TIER = 8;
+
 export const EstateMapView: React.FC = () => {
   const { items, relationships, viewItem, setActiveNav } = usePortfolio();
 
@@ -26,13 +28,22 @@ export const EstateMapView: React.FC = () => {
   const [activeGrouping, setActiveGrouping] = useState<'Technology' | 'Ownership' | 'Lifecycle'>('Technology');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>('agt-1'); // Default select Customer Support Agent
   const [selectedFilterCategory, setSelectedFilterCategory] = useState<string>('All');
+  const [departmentFilter, setDepartmentFilter] = useState<string>('');
+  const [lifecycleFilter, setLifecycleFilter] = useState<string>('');
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [expandedPlatforms, setExpandedPlatforms] = useState(true);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const nodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [edges, setEdges] = useState<
+    { id: string; x1: number; y1: number; x2: number; y2: number; active: boolean }[]
+  >([]);
 
-  // Filter items based on search and category
+  const departments = useMemo(() => Array.from(new Set(items.map((i) => i.department))).sort(), [items]);
+
+  // Filter items based on search, category, department and lifecycle
   const filteredMapItems = useMemo(() => {
     return items.filter((item) => {
       if (searchQuery) {
@@ -45,6 +56,9 @@ export const EstateMapView: React.FC = () => {
         if (!matches) return false;
       }
 
+      if (departmentFilter && item.department !== departmentFilter) return false;
+      if (lifecycleFilter && item.lifecycleStage !== lifecycleFilter) return false;
+
       if (selectedFilterCategory !== 'All') {
         if (selectedFilterCategory === 'Platforms' && item.type !== 'Platform') return false;
         if (selectedFilterCategory === 'Applications' && item.type !== 'Application') return false;
@@ -56,28 +70,22 @@ export const EstateMapView: React.FC = () => {
 
       return true;
     });
-  }, [items, searchQuery, selectedFilterCategory]);
+  }, [items, searchQuery, selectedFilterCategory, departmentFilter, lifecycleFilter]);
 
-  // Platforms to show in top tier
-  const platformNodes = useMemo(() => {
-    return items
-      .filter((i) => i.type === 'Platform')
-      .slice(0, 4); // 4 key platforms matching screenshot
-  }, [items]);
+  // Platforms to show in top tier (respects active filters/search)
+  const allPlatformNodes = useMemo(() => filteredMapItems.filter((i) => i.type === 'Platform'), [filteredMapItems]);
+  const platformNodes = allPlatformNodes.slice(0, MAX_NODES_PER_TIER);
 
-  // Agents to show in middle tier
-  const agentNodes = useMemo(() => {
-    return items
-      .filter((i) => i.type === 'Agent' || i.type === 'Embedded AI')
-      .slice(0, 4); // HR Assistant, Customer Support Agent, Finance Copilot, Field Ops Copilot
-  }, [items]);
+  // Agents + embedded AI to show in middle tier
+  const allAgentNodes = useMemo(
+    () => filteredMapItems.filter((i) => i.type === 'Agent' || i.type === 'Embedded AI'),
+    [filteredMapItems]
+  );
+  const agentNodes = allAgentNodes.slice(0, MAX_NODES_PER_TIER);
 
   // Applications to show in bottom tier
-  const appNodes = useMemo(() => {
-    return items
-      .filter((i) => i.type === 'Application')
-      .slice(0, 3); // ServiceNow, Salesforce, Internal Knowledge Base
-  }, [items]);
+  const allAppNodes = useMemo(() => filteredMapItems.filter((i) => i.type === 'Application'), [filteredMapItems]);
+  const appNodes = allAppNodes.slice(0, MAX_NODES_PER_TIER);
 
   // Currently selected item for the side drawer
   const selectedNode = items.find((i) => i.id === selectedNodeId);
@@ -95,6 +103,54 @@ export const EstateMapView: React.FC = () => {
 
     return ids;
   }, [selectedNodeId, relationships]);
+
+  // Recompute connector positions whenever the rendered node set changes.
+  // Measures actual DOM node positions instead of hand-drawn pixel paths,
+  // so connectors stay correct for any filtered subset of the estate.
+  useEffect(() => {
+    const computeEdges = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const canvasRect = canvas.getBoundingClientRect();
+      const newEdges: { id: string; x1: number; y1: number; x2: number; y2: number; active: boolean }[] = [];
+
+      relationships.forEach((rel) => {
+        const sourceEl = nodeRefs.current.get(rel.sourceId);
+        const targetEl = nodeRefs.current.get(rel.targetId);
+        if (!sourceEl || !targetEl) return;
+        const s = sourceEl.getBoundingClientRect();
+        const t = targetEl.getBoundingClientRect();
+
+        newEdges.push({
+          id: rel.id,
+          x1: (s.left + s.width / 2 - canvasRect.left) / zoomLevel,
+          y1: (s.top + s.height - canvasRect.top) / zoomLevel,
+          x2: (t.left + t.width / 2 - canvasRect.left) / zoomLevel,
+          y2: (t.top - canvasRect.top) / zoomLevel,
+          active: connectedNodeIds.has(rel.sourceId) && connectedNodeIds.has(rel.targetId),
+        });
+      });
+
+      setEdges(newEdges);
+    };
+
+    computeEdges();
+    const raf = requestAnimationFrame(computeEdges);
+    window.addEventListener('resize', computeEdges);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', computeEdges);
+    };
+    // filteredMapItems is memoized and fully determines the node slices below,
+    // so depending on it (rather than the freshly-sliced arrays, which get a
+    // new reference every render) avoids re-triggering this effect forever.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredMapItems, relationships, zoomLevel, connectedNodeIds]);
+
+  const registerNodeRef = (id: string) => (el: HTMLDivElement | null) => {
+    if (el) nodeRefs.current.set(id, el);
+    else nodeRefs.current.delete(id);
+  };
 
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
@@ -145,6 +201,36 @@ export const EstateMapView: React.FC = () => {
                 </button>
               )}
             </div>
+
+            {/* Department filter */}
+            <select
+              value={departmentFilter}
+              onChange={(e) => setDepartmentFilter(e.target.value)}
+              className="px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none focus:border-blue-500"
+            >
+              <option value="">Department: All</option>
+              {departments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
+
+            {/* Lifecycle filter */}
+            <select
+              value={lifecycleFilter}
+              onChange={(e) => setLifecycleFilter(e.target.value)}
+              className="px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none focus:border-blue-500"
+            >
+              <option value="">Lifecycle: All</option>
+              <option value="Production">Production</option>
+              <option value="Development">Development</option>
+              <option value="Pilot">Pilot</option>
+              <option value="In progress">In progress</option>
+              <option value="Evaluation">Evaluation</option>
+              <option value="Ideation">Ideation</option>
+              <option value="Retired">Retired</option>
+            </select>
 
             {/* View Switcher pills: [Map view] [Table view] */}
             <div className="inline-flex p-0.5 bg-slate-100 rounded-lg border border-slate-200 text-xs font-medium">
@@ -305,6 +391,17 @@ export const EstateMapView: React.FC = () => {
 
         {/* Center: Graph Canvas */}
         <div className="flex-1 bg-[#f8fafc] relative overflow-auto p-8 flex items-center justify-center min-h-[600px]">
+          {(allPlatformNodes.length > MAX_NODES_PER_TIER ||
+            allAgentNodes.length > MAX_NODES_PER_TIER ||
+            allAppNodes.length > MAX_NODES_PER_TIER) && (
+            <div className="absolute top-5 left-5 z-10 bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-xs text-[11px] text-slate-500">
+              Showing up to {MAX_NODES_PER_TIER} nodes per tier to keep the map readable.{' '}
+              <button onClick={() => setActiveNav('portfolio')} className="text-blue-600 font-semibold hover:underline">
+                See all in Table view
+              </button>
+            </div>
+          )}
+
           {/* Zoom & Canvas Controls Overlay matching screenshot */}
           <div className="absolute top-5 right-5 z-10 flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg p-1 shadow-xs">
             <button
@@ -344,6 +441,7 @@ export const EstateMapView: React.FC = () => {
 
           {/* Interactive Tier Canvas */}
           <div
+            ref={canvasRef}
             style={{
               transform: `scale(${zoomLevel})`,
               transformOrigin: 'center center',
@@ -351,7 +449,7 @@ export const EstateMapView: React.FC = () => {
             }}
             className="w-full max-w-4xl relative select-none py-6"
           >
-            {/* SVG Connecting Edges overlay */}
+            {/* Dynamically computed connecting edges - measured from actual node positions */}
             <svg
               className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible"
               xmlns="http://www.w3.org/2000/svg"
@@ -381,69 +479,31 @@ export const EstateMapView: React.FC = () => {
                 </marker>
               </defs>
 
-              {/* Tier 1 to Tier 2 connections (Platform -> Agent) */}
-              {/* Azure AI Foundry (x~360, y~70) -> Customer Support Agent (x~440, y~220) */}
-              <path
-                d="M 370 85 C 370 140, 450 160, 450 215"
-                fill="none"
-                stroke={connectedNodeIds.has('plt-2') && connectedNodeIds.has('agt-1') ? '#2563eb' : '#cbd5e1'}
-                strokeWidth={connectedNodeIds.has('plt-2') && connectedNodeIds.has('agt-1') ? '2.5' : '1.5'}
-                strokeDasharray={connectedNodeIds.has('plt-2') && connectedNodeIds.has('agt-1') ? 'none' : '4 3'}
-                markerEnd={connectedNodeIds.has('plt-2') && connectedNodeIds.has('agt-1') ? 'url(#arrow-active)' : 'url(#arrow)'}
-              />
-
-              {/* Microsoft Copilot (x~130, y~70) -> HR Assistant (x~180, y~220) */}
-              <path
-                d="M 140 85 C 140 140, 190 160, 190 215"
-                fill="none"
-                stroke={connectedNodeIds.has('plt-1') && connectedNodeIds.has('agt-3') ? '#2563eb' : '#cbd5e1'}
-                strokeWidth={connectedNodeIds.has('plt-1') && connectedNodeIds.has('agt-3') ? '2.5' : '1.5'}
-                strokeDasharray="4 3"
-                markerEnd="url(#arrow)"
-              />
-
-              {/* Microsoft Copilot -> Finance Copilot (x~680, y~220) */}
-              <path
-                d="M 180 85 C 180 130, 680 150, 680 215"
-                fill="none"
-                stroke={connectedNodeIds.has('plt-1') && connectedNodeIds.has('agt-5') ? '#2563eb' : '#e2e8f0'}
-                strokeWidth="1.5"
-                strokeDasharray="4 3"
-                markerEnd="url(#arrow)"
-              />
-
-              {/* Tier 2 to Tier 3 connections (Agent -> Application) */}
-              {/* Customer Support Agent (x~450, y~280) -> Salesforce (x~450, y~380) */}
-              <path
-                d="M 450 280 C 450 320, 450 340, 450 375"
-                fill="none"
-                stroke={connectedNodeIds.has('agt-1') && connectedNodeIds.has('app-1') ? '#2563eb' : '#cbd5e1'}
-                strokeWidth={connectedNodeIds.has('agt-1') && connectedNodeIds.has('app-1') ? '2.5' : '1.5'}
-                markerEnd={connectedNodeIds.has('agt-1') && connectedNodeIds.has('app-1') ? 'url(#arrow-active)' : 'url(#arrow)'}
-              />
-
-              {/* HR Assistant (x~190, y~280) -> ServiceNow / Internal KB (x~200, y~380) */}
-              <path
-                d="M 190 280 C 190 320, 200 340, 200 375"
-                fill="none"
-                stroke={connectedNodeIds.has('agt-3') && connectedNodeIds.has('app-2') ? '#2563eb' : '#cbd5e1'}
-                strokeWidth="1.5"
-                markerEnd="url(#arrow)"
-              />
-
-              {/* Customer Support Agent -> Internal Knowledge Base (x~700, y~380) */}
-              <path
-                d="M 500 280 C 500 320, 690 330, 690 375"
-                fill="none"
-                stroke={connectedNodeIds.has('agt-1') && connectedNodeIds.has('app-3') ? '#2563eb' : '#e2e8f0'}
-                strokeWidth="1.5"
-                strokeDasharray="4 3"
-                markerEnd="url(#arrow)"
-              />
+              {edges.map((edge) => {
+                const midY = (edge.y1 + edge.y2) / 2;
+                const d = `M ${edge.x1} ${edge.y1} C ${edge.x1} ${midY}, ${edge.x2} ${midY}, ${edge.x2} ${edge.y2}`;
+                return (
+                  <path
+                    key={edge.id}
+                    d={d}
+                    fill="none"
+                    stroke={edge.active ? '#2563eb' : '#cbd5e1'}
+                    strokeWidth={edge.active ? 2.5 : 1.5}
+                    strokeDasharray={edge.active ? 'none' : '4 3'}
+                    markerEnd={edge.active ? 'url(#arrow-active)' : 'url(#arrow)'}
+                  />
+                );
+              })}
             </svg>
 
             {/* TIER 1: PLATFORMS ROW */}
-            <div className="relative z-10 grid grid-cols-4 gap-4 mb-20">
+            <div
+              className="relative z-10 grid gap-4 mb-20"
+              style={{ gridTemplateColumns: `repeat(${Math.min(platformNodes.length, 4) || 1}, minmax(0, 1fr))` }}
+            >
+              {platformNodes.length === 0 && (
+                <p className="text-xs text-slate-400 py-4 text-center col-span-full">No platforms match the current filters.</p>
+              )}
               {platformNodes.map((platform) => {
                 const isSelected = selectedNodeId === platform.id;
                 const isConnected = connectedNodeIds.has(platform.id);
@@ -455,6 +515,7 @@ export const EstateMapView: React.FC = () => {
                   <div
                     key={platform.id}
                     id={`map-node-${platform.id}`}
+                    ref={registerNodeRef(platform.id)}
                     onClick={() => setSelectedNodeId(platform.id)}
                     className={`bg-white rounded-xl border p-3.5 shadow-xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 ${
                       isSelected
@@ -487,7 +548,13 @@ export const EstateMapView: React.FC = () => {
             </div>
 
             {/* TIER 2: AGENTS ROW */}
-            <div className="relative z-10 grid grid-cols-4 gap-4 mb-20">
+            <div
+              className="relative z-10 grid gap-4 mb-20"
+              style={{ gridTemplateColumns: `repeat(${Math.min(agentNodes.length, 4) || 1}, minmax(0, 1fr))` }}
+            >
+              {agentNodes.length === 0 && (
+                <p className="text-xs text-slate-400 py-4 text-center col-span-full">No agents match the current filters.</p>
+              )}
               {agentNodes.map((agent) => {
                 const isSelected = selectedNodeId === agent.id;
                 const isConnected = connectedNodeIds.has(agent.id);
@@ -496,6 +563,7 @@ export const EstateMapView: React.FC = () => {
                   <div
                     key={agent.id}
                     id={`map-node-${agent.id}`}
+                    ref={registerNodeRef(agent.id)}
                     onClick={() => setSelectedNodeId(agent.id)}
                     className={`bg-white rounded-xl border p-3.5 shadow-xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 ${
                       isSelected
@@ -528,7 +596,13 @@ export const EstateMapView: React.FC = () => {
             </div>
 
             {/* TIER 3: APPLICATIONS ROW */}
-            <div className="relative z-10 grid grid-cols-3 gap-6 max-w-2xl mx-auto">
+            <div
+              className="relative z-10 grid gap-6 max-w-2xl mx-auto"
+              style={{ gridTemplateColumns: `repeat(${Math.min(appNodes.length, 3) || 1}, minmax(0, 1fr))` }}
+            >
+              {appNodes.length === 0 && (
+                <p className="text-xs text-slate-400 py-4 text-center col-span-full">No applications match the current filters.</p>
+              )}
               {appNodes.map((app) => {
                 const isSelected = selectedNodeId === app.id;
                 const isConnected = connectedNodeIds.has(app.id);
@@ -537,6 +611,7 @@ export const EstateMapView: React.FC = () => {
                   <div
                     key={app.id}
                     id={`map-node-${app.id}`}
+                    ref={registerNodeRef(app.id)}
                     onClick={() => setSelectedNodeId(app.id)}
                     className={`bg-white rounded-xl border p-3.5 shadow-xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 ${
                       isSelected

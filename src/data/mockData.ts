@@ -1,6 +1,8 @@
-import { EstateItem, Relationship } from '../types';
+import { EstateItem, Relationship, IntendedOutcome, ValueHypothesis, MeasurementInfo } from '../types';
+import { DEPARTMENT_TO_BUSINESS_UNIT_ID } from './configData';
+import { deriveEstimatedAnnualBenefit } from '../lib/valueCalculations';
 
-export const INITIAL_ESTATE_ITEMS: EstateItem[] = [
+const RAW_ESTATE_ITEMS: EstateItem[] = [
   // PLATFORMS
   {
     id: 'plt-1',
@@ -997,6 +999,493 @@ export const INITIAL_ESTATE_ITEMS: EstateItem[] = [
     tags: ['Governance', 'EU AI Act', 'Compliance'],
   },
 ];
+
+// ============================================================
+// VALUE & INVESTMENT DATA
+// Structured value hypotheses, intended outcomes and measurement
+// info layered onto the estate catalogue above, keyed by item id.
+// Items intentionally left out of this map have no documented value
+// hypothesis yet - a genuine information gap, not an oversight.
+// ============================================================
+
+type ValueDataEntry = {
+  outcome?: IntendedOutcome;
+  valueHypothesis?: ValueHypothesis;
+  measurement?: MeasurementInfo;
+};
+
+const VALUE_DATA: Record<string, ValueDataEntry> = {
+  'agt-1': {
+    outcome: {
+      name: 'Reduce Tier-1 support handling time',
+      category: 'Productivity',
+      description: 'Resolve Tier-1 inbound support inquiries without human escalation while maintaining CSAT.',
+      businessOwner: 'Elena Rostova',
+      strategicObjective: 'Improve operational efficiency',
+      measurementUnit: '% tickets auto-resolved',
+      baselineValue: '0%',
+      targetValue: '38%',
+      targetDate: '2026-03-31',
+    },
+    valueHypothesis: {
+      status: 'Validated',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Reduced average handling time per Tier-1 ticket',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 42000, timeSavedPerTransactionHours: 0.15, costPerHour: 28 },
+      assumptions: '42,000 Tier-1 tickets/year; 9 minutes saved per ticket; £28/hr blended Customer Services support rate.',
+      confidenceLevel: 'High',
+    },
+    measurement: {
+      metricName: 'Tier-1 auto-resolution rate',
+      baseline: '0%',
+      current: '36%',
+      target: '38%',
+      lastMeasuredDate: '05 Nov 2025',
+      lastMeasuredDaysAgo: 21,
+      evidenceStatus: 'Documented',
+    },
+  },
+  'agt-2': {
+    outcome: {
+      name: 'Shorten financial close cycle',
+      category: 'Cost reduction',
+      description: 'Cut monthly financial close cycle time from 7 days to 3.5 days.',
+      businessOwner: 'Rachel Green',
+      strategicObjective: 'Improve operational efficiency',
+      measurementUnit: 'Close cycle days',
+      baselineValue: '7 days',
+      targetValue: '3.5 days',
+      targetDate: '2026-01-31',
+    },
+    valueHypothesis: {
+      status: 'Being measured',
+      benefitCategory: 'Cost reduction',
+      expectedBenefit: 'Avoided overtime and temporary resourcing during month-end close',
+      calculationMethod: 'cost-reduction',
+      costReductionInputs: { currentAnnualCost: 180000, expectedFutureAnnualCost: 95000 },
+      assumptions: 'Current annual overtime/temp-staff cost for month-end close vs. projected cost once close is automated.',
+      confidenceLevel: 'Medium',
+    },
+    measurement: {
+      metricName: 'Close cycle duration',
+      baseline: '7 days',
+      current: '4.5 days',
+      target: '3.5 days',
+      lastMeasuredDate: '01 Nov 2025',
+      lastMeasuredDaysAgo: 25,
+      evidenceStatus: 'In progress',
+    },
+  },
+  'agt-3': {
+    outcome: {
+      name: 'Deflect repetitive HR policy queries',
+      category: 'Productivity',
+      description: 'Deflect repetitive policy queries away from HR business partners.',
+      businessOwner: 'Sarah Jenkins',
+      strategicObjective: 'Improve employee experience',
+      measurementUnit: '% queries deflected',
+      baselineValue: '0%',
+      targetValue: '60%',
+    },
+    valueHypothesis: {
+      status: 'Calculated',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'HR business partner time freed from routine policy questions',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 15000, timeSavedPerTransactionHours: 0.1, costPerHour: 32 },
+      assumptions: '15,000 policy queries/year; 6 minutes saved per query; £32/hr blended HR business-partner rate.',
+      confidenceLevel: 'Medium',
+    },
+  },
+  'agt-4': {
+    outcome: {
+      name: 'Reduce mean-time-to-repair on critical assets',
+      category: 'Productivity',
+      description: 'Reduce mean-time-to-repair (MTTR) on critical assets by 24%.',
+      businessOwner: 'Liam Cooper',
+      strategicObjective: 'Improve operational efficiency',
+      measurementUnit: 'MTTR (hours)',
+      baselineValue: 'Baseline MTTR',
+      targetValue: '-24%',
+    },
+    valueHypothesis: {
+      status: 'Calculated',
+      benefitCategory: 'Cost reduction',
+      expectedBenefit: 'Avoided downtime and overtime callouts across the field engineering team',
+      calculationMethod: 'manual',
+      manualInputs: {
+        explanation: '24% MTTR reduction across ~40 field engineers, valued against avoided downtime penalties and reduced overtime callouts.',
+      },
+      estimatedAnnualBenefit: 210000,
+      assumptions: 'Manual estimate agreed with Field Engineering leadership; not yet independently validated.',
+      confidenceLevel: 'Medium',
+    },
+  },
+  'agt-5': {
+    outcome: {
+      name: 'Automate cash-flow and PO matching',
+      category: 'Productivity',
+      description: 'Automate weekly cash-flow projections and PO matching.',
+      businessOwner: 'Rachel Green',
+      strategicObjective: 'Improve operational efficiency',
+    },
+    valueHypothesis: {
+      status: 'Validated',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Analyst time saved on manual cash-flow and PO reconciliation',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 9000, timeSavedPerTransactionHours: 0.2, costPerHour: 35 },
+      assumptions: '9,000 cash-flow/PO matching tasks/year; 12 minutes saved per task; £35/hr blended Corporate Finance rate.',
+      confidenceLevel: 'High',
+    },
+  },
+  'agt-6': {
+    outcome: {
+      name: 'Shorten legal contract turnaround',
+      category: 'Cost reduction',
+      description: 'Shorten average legal turnaround time on commercial contracts from 5 business days to 24 hours.',
+      businessOwner: 'Chloe Bennett',
+      strategicObjective: 'Strengthen compliance & governance',
+    },
+    valueHypothesis: {
+      status: 'Hypothesis',
+      benefitCategory: 'Cost reduction',
+      expectedBenefit: 'Fewer external counsel escalations and reduced deal-desk delay costs',
+      confidenceLevel: 'Low',
+    },
+  },
+  'agt-7': {
+    outcome: {
+      name: 'Reduce engineering ramp-up time',
+      category: 'Productivity',
+      description: 'Reduce developer ramp-up time and internal context switching.',
+      businessOwner: 'Mark Taylor',
+      strategicObjective: 'Improve operational efficiency',
+    },
+    valueHypothesis: {
+      status: 'Calculated',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Engineer time saved searching documentation and architecture records',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 5400, timeSavedPerTransactionHours: 0.25, costPerHour: 55 },
+      assumptions: '~450 engineering queries/month (5,400/year); 15 minutes saved per query; £55/hr blended engineer rate.',
+      confidenceLevel: 'Medium',
+    },
+  },
+  'agt-8': {
+    outcome: {
+      name: 'Automate standard IT tickets',
+      category: 'Productivity',
+      description: 'Automate standard internal IT help tickets with zero human intervention.',
+      businessOwner: 'Mark Taylor',
+      strategicObjective: 'Improve operational efficiency',
+      measurementUnit: '% tickets automated',
+      baselineValue: '0%',
+      targetValue: '45%',
+    },
+    valueHypothesis: {
+      status: 'Validated',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'IT service desk time saved on standard Tier-1 tickets',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 12600, timeSavedPerTransactionHours: 0.2, costPerHour: 26 },
+      assumptions: '28,000 IT tickets/year, 45% automated (12,600); 12 minutes saved per ticket; £26/hr blended service-desk rate.',
+      confidenceLevel: 'High',
+    },
+    measurement: {
+      metricName: 'IT tickets automated',
+      baseline: '0%',
+      current: '41%',
+      target: '45%',
+      lastMeasuredDate: '06 Nov 2025',
+      lastMeasuredDaysAgo: 20,
+      evidenceStatus: 'Documented',
+    },
+  },
+  'agt-9': {
+    outcome: {
+      name: 'Eliminate duplicate invoice payments',
+      category: 'Cost reduction',
+      description: 'Eliminate duplicate invoice payments and reduce manual processing time per invoice.',
+      businessOwner: 'Rachel Green',
+      strategicObjective: 'Improve operational efficiency',
+      measurementUnit: 'Minutes per invoice',
+      baselineValue: '12 min',
+      targetValue: '45 sec',
+    },
+    valueHypothesis: {
+      status: 'Validated',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Accounts Payable processing time saved per invoice',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 40000, timeSavedPerTransactionHours: 0.19, costPerHour: 24 },
+      assumptions: '40,000 invoices/year; ~11.25 minutes saved per invoice (12 min → 45 sec); £24/hr blended AP rate.',
+      confidenceLevel: 'High',
+    },
+    measurement: {
+      metricName: 'Avg. processing time per invoice',
+      baseline: '12 min',
+      current: '52 sec',
+      target: '45 sec',
+      lastMeasuredDate: '18 Sep 2025',
+      lastMeasuredDaysAgo: 69,
+      evidenceStatus: 'Documented',
+    },
+  },
+  // agt-10 Sales Prospecting Assistant: intentionally no value hypothesis (missing owner, gap item)
+  'agt-11': {
+    outcome: {
+      name: 'Improve new-joiner retention',
+      category: 'Employee experience',
+      description: 'Improve 90-day retention and reduce initial onboarding admin burden.',
+      businessOwner: 'Sarah Jenkins',
+      strategicObjective: 'Improve employee experience',
+    },
+    valueHypothesis: {
+      status: 'Hypothesis',
+      benefitCategory: 'Employee experience',
+      expectedBenefit: 'Reduced early attrition and HR admin time during onboarding',
+      confidenceLevel: 'Low',
+    },
+  },
+  'agt-12': {
+    outcome: {
+      name: 'Accelerate localized campaign production',
+      category: 'Productivity',
+      description: 'Deliver localized marketing assets across European regions faster.',
+      businessOwner: 'Marcus Lee',
+      strategicObjective: 'Accelerate revenue growth',
+    },
+    valueHypothesis: {
+      status: 'Calculated',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Campaign asset production time saved',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 600, timeSavedPerTransactionHours: 2, costPerHour: 30 },
+      assumptions: '~600 campaign assets/year; 2 hours saved per asset; £30/hr blended Marketing rate.',
+      confidenceLevel: 'Medium',
+    },
+  },
+  'emb-1': {
+    outcome: {
+      name: 'Auto-categorize inbound IT requests',
+      category: 'Productivity',
+      description: 'Auto-categorize inbound IT service requests correctly.',
+      businessOwner: 'Mark Taylor',
+      strategicObjective: 'Improve operational efficiency',
+    },
+    valueHypothesis: {
+      status: 'Calculated',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Time saved on manual ticket triage and routing',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 19600, timeSavedPerTransactionHours: 0.08, costPerHour: 26 },
+      assumptions: '28,000 tickets/year, 70% correctly auto-categorized (19,600); 5 minutes saved per ticket; £26/hr blended rate.',
+      confidenceLevel: 'Medium',
+    },
+  },
+  'emb-2': {
+    outcome: {
+      name: 'Reduce manual CRM record entry',
+      category: 'Productivity',
+      description: 'Save sales reps time per week on manual CRM record entry.',
+      businessOwner: 'Elena Rostova',
+      strategicObjective: 'Accelerate revenue growth',
+    },
+    valueHypothesis: {
+      status: 'Being measured',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Sales rep time saved on CRM data entry, redirected to selling activity',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 85, timeSavedPerTransactionHours: 180, costPerHour: 38 },
+      assumptions: '85 sales reps; ~4 hrs/week saved (180 hrs/year across a 45-week working year); £38/hr blended sales rate.',
+      confidenceLevel: 'Medium',
+    },
+  },
+  'plt-2': {
+    outcome: {
+      name: 'Scalable foundation for agent deployments',
+      category: 'Productivity',
+      description: 'Provide scalable, compliant foundation for bespoke customer and internal agent deployments.',
+      businessOwner: 'Jonathan Vance',
+      strategicObjective: 'Improve operational efficiency',
+    },
+    valueHypothesis: {
+      status: 'Hypothesis',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Enables downstream agent value; benefit realised through the agents built on this platform rather than directly.',
+      confidenceLevel: 'Low',
+    },
+  },
+  'ini-1': {
+    outcome: {
+      name: 'Reduce support operational cost while lifting CSAT',
+      category: 'Cost reduction',
+      description: 'Deliver annualized support operational savings while lifting CSAT.',
+      businessOwner: 'Jonathan Vance',
+      strategicObjective: 'Improve operational efficiency',
+    },
+    valueHypothesis: {
+      status: 'Being measured',
+      benefitCategory: 'Cost reduction',
+      expectedBenefit: 'Reduced cost-to-serve across web, voice and WhatsApp support channels',
+      calculationMethod: 'manual',
+      manualInputs: {
+        explanation: 'Programme business case target of £1.2m annualized operational savings once all channels are unified under the autonomous tier.',
+      },
+      estimatedAnnualBenefit: 1200000,
+      assumptions: 'Based on the approved programme business case; being tracked quarterly against actuals.',
+      confidenceLevel: 'Medium',
+    },
+  },
+  'ini-2': {
+    outcome: {
+      name: 'Cut manual accounting effort',
+      category: 'Productivity',
+      description: 'Cut manual accounting effort by 4,000 hours annually.',
+      businessOwner: 'Rachel Green',
+      strategicObjective: 'Improve operational efficiency',
+      measurementUnit: 'Manual hours/year',
+      baselineValue: 'Current baseline',
+      targetValue: '-4,000 hrs',
+    },
+    valueHypothesis: {
+      status: 'Validated',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Finance operations hours saved across the group finance centre',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 4000, timeSavedPerTransactionHours: 1, costPerHour: 38 },
+      assumptions: '4,000 manual accounting hours removed annually; £38/hr blended Finance operations rate.',
+      confidenceLevel: 'High',
+    },
+    measurement: {
+      metricName: 'Manual accounting hours removed',
+      baseline: '0 hrs',
+      current: '3,150 hrs',
+      target: '4,000 hrs',
+      lastMeasuredDate: '28 Oct 2025',
+      lastMeasuredDaysAgo: 29,
+      evidenceStatus: 'Documented',
+    },
+  },
+  'ini-3': {
+    outcome: {
+      name: 'Lift employee engagement and HR response times',
+      category: 'Employee experience',
+      description: 'Increase employee engagement index and shorten HR response times.',
+      businessOwner: 'Sarah Jenkins',
+      strategicObjective: 'Improve employee experience',
+    },
+    valueHypothesis: {
+      status: 'Calculated',
+      benefitCategory: 'Employee experience',
+      expectedBenefit: 'Reduced attrition-related recruitment cost from improved engagement',
+      calculationMethod: 'manual',
+      manualInputs: {
+        explanation: 'Engagement index uplift valued against avoided attrition-related recruitment and onboarding cost, based on People & Culture benchmarks.',
+      },
+      estimatedAnnualBenefit: 65000,
+      assumptions: 'Manual estimate; not yet independently validated against actual attrition data.',
+      confidenceLevel: 'Medium',
+    },
+  },
+  'ini-4': {
+    outcome: {
+      name: 'Scale Copilot adoption across knowledge workers',
+      category: 'Productivity',
+      description: 'Achieve weekly active adoption and time savings per knowledge worker.',
+      businessOwner: 'Jonathan Vance',
+      strategicObjective: 'Improve operational efficiency',
+      measurementUnit: '% weekly active adoption',
+      baselineValue: '0%',
+      targetValue: '82%',
+    },
+    valueHypothesis: {
+      status: 'Being measured',
+      benefitCategory: 'Productivity',
+      expectedBenefit: 'Knowledge worker time saved on drafting, email and meeting synthesis',
+      calculationMethod: 'productivity',
+      productivityInputs: { annualVolume: 3500, timeSavedPerTransactionHours: 22, costPerHour: 42 },
+      assumptions: '3,500 licensed knowledge workers; ~30 min/week saved (22 hrs/year across a 45-week working year, adoption-weighted); £42/hr blended rate.',
+      confidenceLevel: 'Medium',
+    },
+    measurement: {
+      metricName: 'Weekly active adoption',
+      baseline: '0%',
+      current: '68%',
+      target: '82%',
+      lastMeasuredDate: '12 Nov 2025',
+      lastMeasuredDaysAgo: 14,
+      evidenceStatus: 'Documented',
+    },
+  },
+  'ini-5': {
+    outcome: {
+      name: 'Reduce IT ticket resolution cost',
+      category: 'Cost reduction',
+      description: 'Reduce IT ticket resolution cost.',
+      businessOwner: 'Mark Taylor',
+      strategicObjective: 'Improve operational efficiency',
+    },
+    valueHypothesis: {
+      status: 'Hypothesis',
+      benefitCategory: 'Cost reduction',
+      expectedBenefit: 'Lower cost per resolved IT ticket once self-service workflows launch',
+      confidenceLevel: 'Low',
+    },
+  },
+  // ini-6 Supply Chain Intelligence: intentionally no value hypothesis (missing owner, stale, gap item)
+  'ini-7': {
+    outcome: {
+      name: 'Early-warning churn signal for executives',
+      category: 'Risk reduction',
+      description: 'Provide weekly early-warning churn reports to the executive committee.',
+      businessOwner: 'Elena Rostova',
+      strategicObjective: 'Elevate customer experience',
+    },
+    valueHypothesis: {
+      status: 'Hypothesis',
+      benefitCategory: 'Risk reduction',
+      expectedBenefit: 'Earlier intervention on emerging churn risk, avoiding revenue loss',
+      confidenceLevel: 'Low',
+    },
+  },
+  'ini-8': {
+    outcome: {
+      name: 'Maintain audit defensibility for deployed AI',
+      category: 'Compliance',
+      description: 'Maintain audit defensibility for all deployed enterprise AI assets.',
+      businessOwner: 'Chloe Bennett',
+      strategicObjective: 'Strengthen compliance & governance',
+    },
+    valueHypothesis: {
+      status: 'Hypothesis',
+      benefitCategory: 'Compliance',
+      expectedBenefit: 'Avoided regulatory penalties and audit remediation cost',
+      confidenceLevel: 'Low',
+    },
+  },
+};
+
+export const INITIAL_ESTATE_ITEMS: EstateItem[] = RAW_ESTATE_ITEMS.map((item) => {
+  const valueData = VALUE_DATA[item.id];
+  const valueHypothesis = valueData?.valueHypothesis
+    ? {
+        ...valueData.valueHypothesis,
+        // Derive the estimated annual benefit from the calculation method's own
+        // inputs, so the stored figure can never drift from how it was calculated.
+        estimatedAnnualBenefit: deriveEstimatedAnnualBenefit(valueData.valueHypothesis),
+      }
+    : undefined;
+
+  return {
+    ...item,
+    businessUnitId: DEPARTMENT_TO_BUSINESS_UNIT_ID[item.department],
+    ...valueData,
+    ...(valueHypothesis ? { valueHypothesis } : {}),
+  };
+});
 
 export const INITIAL_RELATIONSHIPS: Relationship[] = [
   // Platforms -> Agents

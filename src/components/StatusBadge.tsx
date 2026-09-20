@@ -1,5 +1,5 @@
 import React from 'react';
-import { LifecycleStage, EstateItemType, ItemStatus } from '../types';
+import { LifecycleStage, EstateItemType, ItemStatus, ValueHypothesisStatus, ConfidenceLevel } from '../types';
 
 interface StatusBadgeProps {
   status: LifecycleStage | ItemStatus;
@@ -106,6 +106,72 @@ export const TypeBadge: React.FC<TypeBadgeProps> = ({ type, size = 'sm' }) => {
       }`}
     >
       {type}
+    </span>
+  );
+};
+
+interface ValueStatusBadgeProps {
+  status: ValueHypothesisStatus;
+  size?: 'sm' | 'md';
+}
+
+export const ValueStatusBadge: React.FC<ValueStatusBadgeProps> = ({ status, size = 'sm' }) => {
+  let style = 'bg-slate-50 text-slate-500 border-slate-200';
+
+  switch (status) {
+    case 'Not defined':
+      style = 'bg-slate-50 text-slate-500 border-slate-200';
+      break;
+    case 'Hypothesis':
+      style = 'bg-amber-50 text-amber-700 border-amber-200/80';
+      break;
+    case 'Calculated':
+      style = 'bg-blue-50 text-blue-700 border-blue-200/80';
+      break;
+    case 'Being measured':
+      style = 'bg-purple-50 text-purple-700 border-purple-200/80';
+      break;
+    case 'Validated':
+      style = 'bg-emerald-50 text-emerald-700 border-emerald-200/80';
+      break;
+    case 'Realised':
+      style = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      break;
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center font-medium rounded-full border ${style} ${
+        size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'
+      }`}
+    >
+      {status}
+    </span>
+  );
+};
+
+interface ConfidenceBadgeProps {
+  level?: ConfidenceLevel;
+  size?: 'sm' | 'md';
+}
+
+export const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({ level, size = 'sm' }) => {
+  if (!level) {
+    return <span className="text-[11px] text-slate-400">Not set</span>;
+  }
+
+  let style = 'bg-slate-50 text-slate-600 border-slate-200';
+  if (level === 'High') style = 'bg-emerald-50 text-emerald-700 border-emerald-200/80';
+  else if (level === 'Medium') style = 'bg-amber-50 text-amber-700 border-amber-200/80';
+  else if (level === 'Low') style = 'bg-rose-50 text-rose-700 border-rose-200/80';
+
+  return (
+    <span
+      className={`inline-flex items-center font-medium rounded-full border ${style} ${
+        size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'
+      }`}
+    >
+      {level}
     </span>
   );
 };
