@@ -1,22 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Info, X, Plus, Server, Layers, Kanban, Link2 } from 'lucide-react';
+import { Info, X, Server, Layers, Kanban, Link2 } from 'lucide-react';
 import { usePortfolio } from '../../context/PortfolioContext';
 import { Drawer } from '../Drawer';
 import { DrawerSection } from '../DrawerSection';
 import { SearchableSelect } from '../SearchableSelect';
 import { ValueHypothesisForm } from '../ValueHypothesisForm';
+import { CostRecordForm } from '../CostRecordForm';
 import { ESTATE_RECORD_TYPES, DRAWER_LIFECYCLE_OPTIONS } from '../../data/configData';
-import {
-  CostRecord,
-  CostPeriod,
-  CostStatus,
-  EstateRecordType,
-  LifecycleStage,
-  ValueHypothesis,
-} from '../../types';
-import { costRecordTotal, formatGBP } from '../../lib/valueCalculations';
+import { CostRecord, EstateRecordType, LifecycleStage, ValueHypothesis } from '../../types';
+import { firstYearCostTotal, developmentCostTotal } from '../../lib/valueCalculations';
 
-const emptyCostRecord: CostRecord = { status: 'Not recorded' };
+const emptyCostRecord: CostRecord = {};
 const emptyValueHypothesis: ValueHypothesis = { status: 'Not defined' };
 
 const emptyForm = (preset?: EstateRecordType) => ({
@@ -37,6 +31,10 @@ const emptyForm = (preset?: EstateRecordType) => ({
   applicationId: undefined as string | undefined,
   initiativeId: undefined as string | undefined,
   dependsOnIds: [] as string[],
+  provider: '',
+  productName: '',
+  licensingModel: '',
+  contractRenewalDate: '',
 });
 
 export const PortfolioItemDrawer: React.FC = () => {
@@ -57,11 +55,13 @@ export const PortfolioItemDrawer: React.FC = () => {
 
   const [formData, setFormData] = useState(emptyForm());
   const [nameError, setNameError] = useState<string | null>(null);
+  const [ownerError, setOwnerError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isEstateDrawerOpen) {
       setFormData(emptyForm(estateDrawerPreset));
       setNameError(null);
+      setOwnerError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEstateDrawerOpen, estateDrawerPreset]);
@@ -85,13 +85,17 @@ export const PortfolioItemDrawer: React.FC = () => {
     .filter((i) => i.id !== undefined)
     .map((i) => ({ id: i.id, label: i.name, sublabel: i.type }));
 
-  const totalCost = costRecordTotal(formData.costRecord);
-
   const handleSave = () => {
+    let valid = true;
     if (!formData.name.trim()) {
       setNameError('Name is required');
-      return;
+      valid = false;
     }
+    if (!formData.businessOwnerId) {
+      setOwnerError('A business owner is required');
+      valid = false;
+    }
+    if (!valid) return;
 
     const selectedBU = activeBusinessUnits.find((b) => b.id === formData.businessUnitId);
     const selectedOwner = activePeople.find((p) => p.id === formData.businessOwnerId);
@@ -125,9 +129,18 @@ export const PortfolioItemDrawer: React.FC = () => {
         teamId: formData.teamId,
         supportTeam: selectedSupportTeam?.name,
         supportTeamId: formData.supportTeamId,
-        annualCost: totalCost,
-        isCostEstimated: formData.costRecord.status === 'Estimated',
+        annualCost: firstYearCostTotal(formData.costRecord),
+        devCost: developmentCostTotal(formData.costRecord),
+        opsCost: formData.costRecord.operatingCost,
+        sharedCost: formData.costRecord.operatingBreakdown?.platformLicensing,
+        externalConsultancyCost: formData.costRecord.developmentBreakdown?.externalConsultancy,
+        internalTeamCost: formData.costRecord.developmentBreakdown?.internalEffort,
+        isCostEstimated: !(formData.costRecord.developmentConfirmed && formData.costRecord.operatingConfirmed),
         costRecord: formData.costRecord,
+        provider: formData.type === 'Platform' ? formData.provider || undefined : undefined,
+        productName: formData.type === 'Platform' ? formData.productName || undefined : undefined,
+        licensingModel: formData.type === 'Platform' ? formData.licensingModel || undefined : undefined,
+        contractRenewalDate: formData.type === 'Platform' ? formData.contractRenewalDate || undefined : undefined,
         valueEvidenceStatus: formData.valueHypothesis.status === 'Not defined' ? 'None' : 'In progress',
         intendedOutcome: formData.outcomeDescription || undefined,
         outcome: formData.outcomeName.trim()
@@ -263,15 +276,68 @@ export const PortfolioItemDrawer: React.FC = () => {
             ))}
           </select>
         </div>
+
+        {formData.type === 'Platform' && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Provider</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Microsoft"
+                  value={formData.provider}
+                  onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Product name</label>
+                <input
+                  type="text"
+                  value={formData.productName}
+                  onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Licensing model</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Per-seat subscription"
+                  value={formData.licensingModel}
+                  onChange={(e) => setFormData({ ...formData, licensingModel: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Contract / renewal date</label>
+                <input
+                  type="text"
+                  placeholder="Optional"
+                  value={formData.contractRenewalDate}
+                  onChange={(e) => setFormData({ ...formData, contractRenewalDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </>
+        )}
       </DrawerSection>
 
-      {/* OWNERSHIP - collapsible */}
-      <DrawerSection title="Ownership" description="Who is accountable for this record, when known.">
+      {/* OWNERSHIP - expanded by default since business owner is required */}
+      <DrawerSection title="Ownership" description="Who is accountable for this record." defaultOpen>
         <div>
-          <label className="block font-semibold text-slate-700 mb-1">Business owner</label>
+          <label className="block font-semibold text-slate-700 mb-1">
+            Business owner <span className="text-rose-500">*</span>
+          </label>
           <SearchableSelect
             value={formData.businessOwnerId}
-            onChange={(id) => setFormData({ ...formData, businessOwnerId: id })}
+            onChange={(id) => {
+              setFormData({ ...formData, businessOwnerId: id });
+              if (ownerError) setOwnerError(null);
+            }}
             options={peopleOptions}
             placeholder="Search people..."
             emptyLabel="Not assigned"
@@ -281,6 +347,7 @@ export const PortfolioItemDrawer: React.FC = () => {
               return created ? { id: created.id, label: created.name } : undefined;
             }}
           />
+          {ownerError && <p className="text-rose-500 text-[11px] mt-1">{ownerError}</p>}
         </div>
         <div>
           <label className="block font-semibold text-slate-700 mb-1">Technical owner</label>
@@ -330,130 +397,18 @@ export const PortfolioItemDrawer: React.FC = () => {
       </DrawerSection>
 
       {/* FINANCIALS - collapsed by default */}
-      <DrawerSection title="Financials" description="Only recorded figures are shown - unknown is never treated as zero.">
-        {formData.costRecord.status === 'Not recorded' ? (
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center space-y-2">
-            <p className="text-slate-500">No financial information recorded</p>
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, costRecord: { ...formData.costRecord, status: 'Estimated' } })}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add cost estimate
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">Cost status</label>
-                <select
-                  value={formData.costRecord.status}
-                  onChange={(e) =>
-                    setFormData({ ...formData, costRecord: { ...formData.costRecord, status: e.target.value as CostStatus } })
-                  }
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
-                >
-                  <option value="Estimated">Estimated</option>
-                  <option value="Confirmed">Confirmed</option>
-                  <option value="Actual">Actual</option>
-                  <option value="Not recorded">Not recorded</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">Cost period</label>
-                <select
-                  value={formData.costRecord.period || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, costRecord: { ...formData.costRecord, period: (e.target.value || undefined) as CostPeriod | undefined } })
-                  }
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs bg-white"
-                >
-                  <option value="">Not set</option>
-                  <option value="One-off">One-off</option>
-                  <option value="Annual">Annual</option>
-                  <option value="Monthly">Monthly</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {(
-                [
-                  ['developmentCost', 'Development cost (£)'],
-                  ['annualOperatingCost', 'Annual operating cost (£)'],
-                  ['platformSharedCost', 'Platform / shared cost (£)'],
-                  ['internalResourceCost', 'Internal resource cost (£)'],
-                  ['externalConsultancyCost', 'External consultancy cost (£)'],
-                ] as const
-              ).map(([key, label]) => (
-                <div key={key}>
-                  <label className="block text-[11px] font-medium text-slate-600 mb-1">{label}</label>
-                  <input
-                    type="number"
-                    placeholder="Not recorded"
-                    value={formData.costRecord[key] ?? ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        costRecord: {
-                          ...formData.costRecord,
-                          [key]: e.target.value === '' ? undefined : Number(e.target.value),
-                        },
-                      })
-                    }
-                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
-                  />
-                </div>
-              ))}
-              <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">Estimate confidence</label>
-                <select
-                  value={formData.costRecord.confidence || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      costRecord: { ...formData.costRecord, confidence: (e.target.value || undefined) as CostRecord['confidence'] },
-                    })
-                  }
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs bg-white"
-                >
-                  <option value="">Not set</option>
-                  <option value="Low">Low</option>
-                  <option value="Medium">Medium</option>
-                  <option value="High">High</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-medium text-slate-600 mb-1">Source or notes</label>
-              <textarea
-                rows={2}
-                placeholder="Where did these figures come from?"
-                value={formData.costRecord.sourceNotes || ''}
-                onChange={(e) => setFormData({ ...formData, costRecord: { ...formData.costRecord, sourceNotes: e.target.value } })}
-                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
-              />
-            </div>
-
-            {totalCost !== undefined && (
-              <div className="p-2.5 rounded bg-blue-50/60 border border-blue-200/80 text-[11px] text-blue-900 flex items-center justify-between">
-                <span>Total (from entered figures)</span>
-                <strong>{formatGBP(totalCost)}</strong>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, costRecord: emptyCostRecord })}
-              className="text-[11px] text-slate-400 hover:text-slate-600"
-            >
-              Clear financial information
-            </button>
-          </div>
-        )}
+      <DrawerSection title="Financials" description="Development cost is one-off; operating cost recurs annually. Nothing is treated as £0 unless you say so.">
+        <CostRecordForm
+          value={formData.costRecord}
+          onChange={(cr) => setFormData({ ...formData, costRecord: cr })}
+        />
+        <button
+          type="button"
+          onClick={() => setFormData({ ...formData, costRecord: emptyCostRecord })}
+          className="text-[11px] text-slate-400 hover:text-slate-600"
+        >
+          Clear financial information
+        </button>
       </DrawerSection>
 
       {/* INTENDED VALUE - collapsible */}

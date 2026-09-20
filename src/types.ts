@@ -119,6 +119,18 @@ export interface EstateItem {
   supportTeam?: string;
   supportTeamId?: string;
   relatedEstateItemIds?: string[];
+
+  // Platform-specific fields (shown on the record page only when type === 'Platform')
+  productName?: string;
+  licensingModel?: string;
+  contractRenewalDate?: string;
+
+  // Project/Programme-specific fields (shown only for Initiatives)
+  sponsor?: string;
+  deliveryOwner?: string;
+  startDate?: string;
+  targetEndDate?: string;
+  budget?: number;
 }
 
 export interface FilterState {
@@ -154,8 +166,7 @@ export type ConfidenceLevel = 'Low' | 'Medium' | 'High';
 export type ValueHypothesisStatus =
   | 'Not defined'
   | 'Hypothesis'
-  | 'Calculated'
-  | 'Being measured'
+  | 'Estimated'
   | 'Validated'
   | 'Realised';
 
@@ -265,23 +276,41 @@ export type PortfolioViewMode = 'all' | 'investment' | 'value' | 'quality';
 
 // ============================================================
 // COST RECORDS
-// Structured financial/resource expenditure, distinct from the legacy flat
-// cost fields on EstateItem (kept for records created before this model).
-// Missing figures are never treated as zero - only entered figures count.
+// Two clearly separated cost categories, matching how the business
+// actually thinks about spend:
+//  - Development cost is one-off (build/delivery). It defaults to £0 when
+//    not broken down further - most tools genuinely have no separate build
+//    spend (e.g. off-the-shelf SaaS), so zero is a legitimate default here.
+//  - Operating cost is recurring (annual run cost). It is never defaulted
+//    to zero - an unset operating cost is shown as "Not yet estimated",
+//    since implying no ongoing cost would be misleading.
+// A cost is only ever labelled "Confirmed" when the user explicitly marks
+// it so; otherwise it stays "Estimated".
 // ============================================================
 
-export type CostStatus = 'Not recorded' | 'Estimated' | 'Confirmed' | 'Actual';
-export type CostPeriod = 'One-off' | 'Annual' | 'Monthly';
+export interface DevelopmentCostBreakdown {
+  internalEffort?: number;
+  externalConsultancy?: number;
+  other?: number;
+}
+
+export interface OperatingCostBreakdown {
+  platformLicensing?: number;
+  infrastructure?: number;
+  supportMaintenance?: number;
+  other?: number;
+}
 
 export interface CostRecord {
-  status: CostStatus;
-  developmentCost?: number;
-  annualOperatingCost?: number;
-  platformSharedCost?: number;
-  internalResourceCost?: number;
-  externalConsultancyCost?: number;
-  period?: CostPeriod;
-  confidence?: ConfidenceLevel;
+  developmentCost?: number; // one-off; treated as £0 when not provided
+  developmentBasis?: string; // optional description or calculation basis
+  developmentBreakdown?: DevelopmentCostBreakdown;
+  developmentConfirmed?: boolean; // false/undefined = Estimated
+
+  operatingCost?: number; // annual recurring; undefined = "Not yet estimated"
+  operatingBreakdown?: OperatingCostBreakdown;
+  operatingConfirmed?: boolean; // false/undefined = Estimated
+
   sourceNotes?: string;
   lastUpdated?: string;
 }

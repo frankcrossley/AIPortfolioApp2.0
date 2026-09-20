@@ -22,7 +22,9 @@ export function getRecommendedActions(item: EstateItem): RecommendedAction[] {
   const isProduction = item.lifecycleStage === 'Production';
   const isHighStakes = isTechnical && isProduction;
 
-  const hasCost = item.costRecord ? item.costRecord.status !== 'Not recorded' : item.annualCost !== undefined;
+  const hasCost = item.costRecord
+    ? item.costRecord.developmentCost !== undefined || item.costRecord.operatingCost !== undefined
+    : item.annualCost !== undefined;
 
   if (!item.businessOwner) {
     actions.push({ id: 'owner', label: 'Assign a business owner', tab: 'overview', openEdit: true, priority: isHighStakes ? 1 : 3 });

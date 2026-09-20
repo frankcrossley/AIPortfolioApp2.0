@@ -88,21 +88,40 @@ export function formatGBP(value: number | undefined | null): string {
 }
 
 /**
- * Sums only the cost figures that have actually been entered on a
- * CostRecord. Returns undefined (never 0) when nothing has been entered,
- * so "no financial information recorded" is never confused with "£0".
+ * Development cost is one-off and defaults to £0 when not broken down
+ * further - most records genuinely have no separate build spend.
+ */
+export function developmentCostTotal(record?: CostRecord | null): number {
+  return record?.developmentCost ?? 0;
+}
+
+/**
+ * Operating cost is recurring and is never defaulted to zero - an unset
+ * figure means "not yet estimated", not "no ongoing cost".
+ */
+export function operatingCostTotal(record?: CostRecord | null): number | undefined {
+  return record?.operatingCost;
+}
+
+/** Development cost + first year of operating cost (0 if not yet estimated). */
+export function firstYearCostTotal(record?: CostRecord | null): number {
+  return developmentCostTotal(record) + (operatingCostTotal(record) ?? 0);
+}
+
+/** Recurring annual cost from year two onward. */
+export function recurringAnnualCostTotal(record?: CostRecord | null): number | undefined {
+  return operatingCostTotal(record);
+}
+
+/**
+ * Total across both cost buckets, for backward-compatible display. Returns
+ * undefined only when neither a development nor an operating figure has
+ * ever been entered on the record.
  */
 export function costRecordTotal(record?: CostRecord | null): number | undefined {
   if (!record) return undefined;
-  const figures = [
-    record.developmentCost,
-    record.annualOperatingCost,
-    record.platformSharedCost,
-    record.internalResourceCost,
-    record.externalConsultancyCost,
-  ].filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
-  if (figures.length === 0) return undefined;
-  return figures.reduce((sum, v) => sum + v, 0);
+  if (record.developmentCost === undefined && record.operatingCost === undefined) return undefined;
+  return firstYearCostTotal(record);
 }
 
 export function formatGBPCompact(value: number | undefined | null): string {

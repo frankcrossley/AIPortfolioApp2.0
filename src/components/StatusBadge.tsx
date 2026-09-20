@@ -125,11 +125,8 @@ export const ValueStatusBadge: React.FC<ValueStatusBadgeProps> = ({ status, size
     case 'Hypothesis':
       style = 'bg-amber-50 text-amber-700 border-amber-200/80';
       break;
-    case 'Calculated':
+    case 'Estimated':
       style = 'bg-blue-50 text-blue-700 border-blue-200/80';
-      break;
-    case 'Being measured':
-      style = 'bg-purple-50 text-purple-700 border-purple-200/80';
       break;
     case 'Validated':
       style = 'bg-emerald-50 text-emerald-700 border-emerald-200/80';
