@@ -15,6 +15,7 @@ import { ItemDetailView } from './views/ItemDetailView';
 import { PlatformsRollupView } from './views/PlatformsRollupView';
 import { RegisterModal } from './views/RegisterModal';
 import { ComingSoonView } from './views/ComingSoonView';
+import { SettingsView } from './views/SettingsView';
 
 const MainLayout: React.FC = () => {
   const { activeNav, selectedItemId } = usePortfolio();
@@ -33,10 +34,10 @@ const MainLayout: React.FC = () => {
           <ItemDetailView itemId={selectedItemId || 'agt-1'} />
         )}
         {activeNav === 'platforms' && <PlatformsRollupView />}
+        {activeNav === 'settings' && <SettingsView />}
         {(activeNav === 'investment' ||
           activeNav === 'value-management' ||
-          activeNav === 'measurement' ||
-          activeNav === 'settings') && (
+          activeNav === 'measurement') && (
           <ComingSoonView viewType={activeNav} />
         )}
       </main>

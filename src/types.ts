@@ -92,6 +92,15 @@ export interface EstateItem {
   tags?: string[];
   // Related items convenience names
   dependencies?: string[];
+
+  // Investment & value model extensions
+  businessUnitId?: string;
+  externalConsultancyCost?: number;
+  internalTeamCost?: number;
+  costCalculationBasis?: string;
+  outcome?: IntendedOutcome;
+  valueHypothesis?: ValueHypothesis;
+  measurement?: MeasurementInfo;
 }
 
 export interface FilterState {
@@ -103,6 +112,7 @@ export interface FilterState {
   owner: string;
   gapType?: string; // for clicking gap cards
   platform?: string; // for filtering by platform
+  businessUnit?: string; // for filtering by configured business unit id
 }
 
 export type ActiveNav =
@@ -116,3 +126,121 @@ export type ActiveNav =
   | 'value-management'
   | 'measurement'
   | 'settings';
+
+// ============================================================
+// VALUE & INVESTMENT MODEL
+// ============================================================
+
+export type ConfidenceLevel = 'Low' | 'Medium' | 'High';
+
+export type ValueHypothesisStatus =
+  | 'Not defined'
+  | 'Hypothesis'
+  | 'Calculated'
+  | 'Being measured'
+  | 'Validated'
+  | 'Realised';
+
+export type CalculationMethod = 'productivity' | 'cost-reduction' | 'manual';
+
+export interface ProductivityCalculationInputs {
+  annualVolume: number;
+  timeSavedPerTransactionHours: number;
+  costPerHour: number;
+}
+
+export interface CostReductionCalculationInputs {
+  currentAnnualCost: number;
+  expectedFutureAnnualCost: number;
+}
+
+export interface ManualCalculationInputs {
+  explanation: string;
+}
+
+export interface IntendedOutcome {
+  name: string;
+  category: string; // benefit category
+  description?: string;
+  businessOwner?: string;
+  strategicObjective?: string;
+  measurementUnit?: string;
+  baselineValue?: string;
+  targetValue?: string;
+  targetDate?: string;
+}
+
+export interface ValueHypothesis {
+  status: ValueHypothesisStatus;
+  benefitCategory?: string;
+  expectedBenefit?: string;
+  calculationMethod?: CalculationMethod;
+  productivityInputs?: ProductivityCalculationInputs;
+  costReductionInputs?: CostReductionCalculationInputs;
+  manualInputs?: ManualCalculationInputs;
+  estimatedAnnualBenefit?: number; // undefined = not quantified
+  assumptions?: string;
+  confidenceLevel?: ConfidenceLevel;
+}
+
+export type EvidenceStatus = 'Not started' | 'In progress' | 'Available' | 'Documented';
+
+export interface MeasurementInfo {
+  metricName?: string;
+  baseline?: string;
+  current?: string;
+  target?: string;
+  lastMeasuredDate?: string;
+  lastMeasuredDaysAgo?: number;
+  evidenceStatus?: EvidenceStatus;
+}
+
+// ============================================================
+// CONFIGURATION PORTAL
+// ============================================================
+
+export interface BusinessUnit {
+  id: string;
+  name: string;
+  code: string;
+  parentId?: string;
+  accountableOwner?: string;
+  status: 'Active' | 'Inactive';
+}
+
+export type ResourceCostType = 'Internal' | 'Consultant' | 'Contractor';
+
+export interface ResourceRate {
+  id: string;
+  role: string;
+  businessUnitId?: string; // blank = role-level blended rate (applies org-wide)
+  costType: ResourceCostType;
+  hourlyRate: number;
+  dailyRate: number;
+  overheadsIncluded: boolean;
+  effectiveDate: string;
+  status: 'Active' | 'Inactive';
+}
+
+export interface BenefitCategoryConfig {
+  id: string;
+  name: string;
+  status: 'Active' | 'Inactive';
+}
+
+export interface StrategicObjectiveConfig {
+  id: string;
+  name: string;
+  status: 'Active' | 'Inactive';
+}
+
+export interface RequiredFieldsConfig {
+  businessOwner: boolean;
+  technicalOwner: boolean;
+  businessUnit: boolean;
+  estimatedAnnualCost: boolean;
+  intendedOutcome: boolean;
+  valueHypothesis: boolean;
+}
+
+export type PortfolioViewMode = 'all' | 'investment' | 'value' | 'quality';

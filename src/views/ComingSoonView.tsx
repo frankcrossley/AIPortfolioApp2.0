@@ -19,7 +19,6 @@ export const ComingSoonView: React.FC<{ viewType: ActiveNav }> = ({ viewType }) 
       case 'investment':
         return {
           title: 'Investment Allocation',
-          subtitle: 'Capital expenditure, run costs, and multi-year forecasting.',
           icon: Sliders,
           badge: 'Phase 2 Module',
           description:
@@ -34,7 +33,6 @@ export const ComingSoonView: React.FC<{ viewType: ActiveNav }> = ({ viewType }) 
       case 'value-management':
         return {
           title: 'Value Management & ROI',
-          subtitle: 'Documented business impact, productivity gains, and executive reporting.',
           icon: TrendingUp,
           badge: 'Phase 2 Module',
           description:
@@ -49,7 +47,6 @@ export const ComingSoonView: React.FC<{ viewType: ActiveNav }> = ({ viewType }) 
       case 'measurement':
         return {
           title: 'Measurement Standards',
-          subtitle: 'Enterprise AI governance, EU AI Act compliance, and safety auditing.',
           icon: ShieldCheck,
           badge: 'Phase 2 Module',
           description:
@@ -65,7 +62,6 @@ export const ComingSoonView: React.FC<{ viewType: ActiveNav }> = ({ viewType }) 
       default:
         return {
           title: 'Portfolio Settings & Governance',
-          subtitle: 'Organisation workspace settings, metadata schemas, and integrations.',
           icon: SettingsIcon,
           badge: 'Configuration',
           description:
@@ -85,11 +81,7 @@ export const ComingSoonView: React.FC<{ viewType: ActiveNav }> = ({ viewType }) 
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-y-auto">
-      <Header
-        title={meta.title}
-        subtitle={meta.subtitle}
-        showRegister={false}
-      />
+      <Header title={meta.title} showRegister={false} />
 
       <div className="p-8 max-w-4xl w-full mx-auto space-y-6">
         <div className="bg-white rounded-2xl border border-slate-200/80 p-8 shadow-xs text-left">

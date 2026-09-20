@@ -11,6 +11,7 @@ import { usePortfolio } from '../context/PortfolioContext';
 import { Header } from '../components/Header';
 import { StatusBadge } from '../components/StatusBadge';
 import { EstateItem } from '../types';
+import { formatGBP, formatGBPCompact } from '../lib/valueCalculations';
 
 export const PlatformsRollupView: React.FC = () => {
   const {
@@ -47,8 +48,8 @@ export const PlatformsRollupView: React.FC = () => {
   const initiativesCount = connectedItems.filter((i) => i.type === 'Initiative').length;
 
   const totalDirectCost = connectedItems.reduce((sum, i) => sum + (i.annualCost || 0), 0);
-  const sharedCost = selectedPlatform?.sharedCost || 210000;
-  const platformTotalCost = (selectedPlatform?.annualCost || 650000);
+  const sharedCost = selectedPlatform?.sharedCost;
+  const platformTotalCost = selectedPlatform?.annualCost;
 
   const handleFilterToPlatform = () => {
     if (!selectedPlatform) return;
@@ -60,7 +61,6 @@ export const PlatformsRollupView: React.FC = () => {
     <div className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-y-auto">
       <Header
         title="Platforms & Roll-ups"
-        subtitle="See how your AI initiatives are grouped by platform and shared services."
         showRegister={false}
         customActions={
           <button
@@ -135,16 +135,16 @@ export const PlatformsRollupView: React.FC = () => {
                           </div>
                         </td>
                         <td className="py-3.5 px-3 text-slate-700 font-medium">
-                          {platform.provider || 'Microsoft'}
+                          {platform.provider || <span className="text-slate-400 font-normal">Not provided</span>}
                         </td>
                         <td className="py-3.5 px-3 text-center font-bold text-slate-800">
-                          {count || 4}
+                          {count}
                         </td>
                         <td className="py-3.5 px-3 font-medium text-slate-700">
-                          £{((platform.sharedCost || 120000) / 1000).toLocaleString()}k
+                          {formatGBPCompact(platform.sharedCost)}
                         </td>
                         <td className="py-3.5 px-3 font-bold text-slate-900">
-                          £{((platform.annualCost || 420000) / 1000).toLocaleString()}k
+                          {formatGBPCompact(platform.annualCost)}
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -173,19 +173,19 @@ export const PlatformsRollupView: React.FC = () => {
                     {selectedPlatform.name}
                   </h2>
                   <div className="text-xs text-slate-400">
-                    Platform • {selectedPlatform.provider || 'Microsoft'}
+                    Platform • {selectedPlatform.provider || 'Not provided'}
                   </div>
                 </div>
               </div>
 
-              {/* Summary Stats Block matching screenshot */}
+              {/* Summary Stats Block */}
               <div className="space-y-4 text-xs">
                 <div>
                   <div className="text-sm font-bold text-slate-900">
-                    {connectedItems.length || 5} initiatives
+                    {connectedItems.length} initiatives
                   </div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
-                    {agentsCount || 3} agents • {appsCount || 2} applications
+                    {agentsCount} agents • {appsCount} applications
                     {initiativesCount > 0 && ` • ${initiativesCount} projects`}
                   </div>
                 </div>
@@ -193,26 +193,28 @@ export const PlatformsRollupView: React.FC = () => {
                 <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-100">
                   <div className="text-[11px] text-slate-500 font-medium">Total cost</div>
                   <div className="text-xl font-bold text-slate-900 mt-0.5">
-                    £{((platformTotalCost) / 1000).toLocaleString()}k{' '}
-                    <span className="text-xs text-slate-500 font-normal">/ year</span>
+                    {formatGBP(platformTotalCost)}{' '}
+                    {platformTotalCost !== undefined && (
+                      <span className="text-xs text-slate-500 font-normal">/ year</span>
+                    )}
                   </div>
                   <div className="text-[11px] text-slate-500 mt-1">
-                    £{((sharedCost) / 1000).toLocaleString()}k shared • £{((totalDirectCost || 440000) / 1000).toLocaleString()}k direct
+                    {formatGBP(sharedCost)} shared • {formatGBP(totalDirectCost)} direct
                   </div>
                 </div>
               </div>
 
-              {/* Key Initiatives List matching screenshot 5 */}
+              {/* Key Initiatives List */}
               <div className="space-y-2.5 pt-2">
                 <div className="text-xs font-bold text-slate-900 uppercase tracking-wider text-[11px]">
                   Key initiatives
                 </div>
 
                 <div className="space-y-1.5">
-                  {(connectedItems.length > 0
-                    ? connectedItems.slice(0, 5)
-                    : items.filter((i) => i.type === 'Agent').slice(0, 4)
-                  ).map((subItem: EstateItem) => (
+                  {connectedItems.length === 0 && (
+                    <p className="text-[11px] text-slate-400 py-1">No initiatives are attributed to this platform yet.</p>
+                  )}
+                  {connectedItems.slice(0, 5).map((subItem: EstateItem) => (
                     <div
                       key={subItem.id}
                       onClick={() => viewItem(subItem.id)}
@@ -229,7 +231,7 @@ export const PlatformsRollupView: React.FC = () => {
                         </span>
                       </div>
                       <span className="text-[11px] text-slate-400 shrink-0 font-medium">
-                        £{subItem.annualCost ? `${Math.round(subItem.annualCost / 1000)}k` : '—'}
+                        {formatGBPCompact(subItem.annualCost)}
                       </span>
                     </div>
                   ))}

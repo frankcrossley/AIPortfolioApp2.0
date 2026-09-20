@@ -4,7 +4,6 @@ import { usePortfolio } from '../context/PortfolioContext';
 
 interface HeaderProps {
   title: string;
-  subtitle?: string;
   breadcrumbs?: { label: string; action?: () => void }[];
   showExport?: boolean;
   showRegister?: boolean;
@@ -15,7 +14,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   title,
-  subtitle,
   breadcrumbs,
   showExport = true,
   showRegister = true,
@@ -40,7 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 px-8 py-5 shrink-0">
+    <header className="bg-white border-b border-slate-200 px-8 py-6 shrink-0">
       {/* Optional Breadcrumbs */}
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
@@ -70,8 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">{title}</h1>
-          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+          <h1 className="text-[28px] leading-tight font-extrabold text-slate-900 tracking-tight">{title}</h1>
         </div>
 
         <div className="flex items-center gap-2.5">

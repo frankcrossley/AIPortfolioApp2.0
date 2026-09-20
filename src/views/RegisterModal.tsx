@@ -6,49 +6,75 @@ import {
   Check,
   Server,
   Layers,
-  Bot,
   Kanban,
 } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
+import { ValueHypothesisForm } from '../components/ValueHypothesisForm';
 import {
   EstateItemType,
   LifecycleStage,
   ItemStatus,
   Priority,
   DataClassification,
-  ValueEvidenceStatus,
+  ValueHypothesis,
+  Relationship,
 } from '../types';
+import { formatGBP } from '../lib/valueCalculations';
+
+const STEPS = [
+  { num: 1, label: 'Basic details' },
+  { num: 2, label: 'Ownership' },
+  { num: 3, label: 'Investment' },
+  { num: 4, label: 'Intended outcome' },
+  { num: 5, label: 'Relationships' },
+] as const;
 
 export const RegisterModal: React.FC = () => {
-  const { isRegisterModalOpen, closeRegisterModal, addItem, items, showToast } = usePortfolio();
+  const { isRegisterModalOpen, closeRegisterModal, addItem, items, showToast, businessUnits, resourceRates } =
+    usePortfolio();
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+
+  const activeBusinessUnits = businessUnits.filter((b) => b.status === 'Active');
+  const activeRoles = Array.from(new Set(resourceRates.filter((r) => r.status === 'Active').map((r) => r.role)));
 
   // Form State
   const [formData, setFormData] = useState({
+    // Step 1: basic details
     name: '',
     type: 'Agent' as EstateItemType,
     lifecycleStage: 'Development' as LifecycleStage,
     status: 'Active' as ItemStatus,
-    department: 'Customer Services',
+    businessUnitId: activeBusinessUnits.find((b) => b.name === 'Customer Services')?.id || activeBusinessUnits[0]?.id || '',
     description: '',
-    platformId: 'plt-2',
-    applicationId: 'app-1',
-    initiativeId: 'ini-1',
+    // Step 2: ownership
     businessOwner: '',
     technicalOwner: '',
     team: '',
     priority: 'High' as Priority,
     dataClassification: 'Internal' as DataClassification,
-    annualCost: 120000,
-    devCost: 70000,
-    opsCost: 35000,
-    sharedCost: 15000,
-    isCostEstimated: false,
-    valueEvidenceStatus: 'In progress' as ValueEvidenceStatus,
-    intendedOutcome: '',
-    dependencies: 'Knowledge Base API, Identity Service',
+    // Step 3: investment
+    devCost: 0,
+    opsCost: 0,
+    sharedCost: 0,
+    isCostEstimated: true,
+    resourceType: '',
+    resourceHours: 0,
+    // Step 4: intended outcome
+    outcomeName: '',
+    outcomeDescription: '',
+    // Step 5: relationships
+    platformId: 'plt-2',
+    applicationId: 'app-1',
+    initiativeId: '',
+    dependencies: '',
+    includeDataFlow: false,
+    dataFlowDirection: 'bidirectional' as 'inbound' | 'outbound' | 'bidirectional',
+    dataFlowDataExchanged: '',
+    dataFlowCriticality: 'Medium' as 'High' | 'Medium' | 'Low',
   });
+
+  const [valueHypothesis, setValueHypothesis] = useState<ValueHypothesis>({ status: 'Not defined' });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -58,10 +84,20 @@ export const RegisterModal: React.FC = () => {
   const applications = items.filter((i) => i.type === 'Application');
   const initiatives = items.filter((i) => i.type === 'Initiative');
 
+  const selectedBusinessUnit = activeBusinessUnits.find((b) => b.id === formData.businessUnitId);
+
+  const matchedRate =
+    resourceRates.find(
+      (r) => r.role === formData.resourceType && r.businessUnitId === formData.businessUnitId && r.status === 'Active'
+    ) || resourceRates.find((r) => r.role === formData.resourceType && !r.businessUnitId && r.status === 'Active');
+  const computedLabourCost = matchedRate ? matchedRate.hourlyRate * formData.resourceHours : 0;
+
+  const annualCost = formData.devCost + formData.opsCost + formData.sharedCost;
+
   const validateStep1 = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.name.trim()) newErrors.name = 'Name is required';
-    if (!formData.department) newErrors.department = 'Department is required';
+    if (!formData.businessUnitId) newErrors.businessUnitId = 'Business unit is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -76,11 +112,11 @@ export const RegisterModal: React.FC = () => {
   const handleNext = () => {
     if (step === 1 && !validateStep1()) return;
     if (step === 2 && !validateStep2()) return;
-    setStep((prev) => Math.min(prev + 1, 4) as 1 | 2 | 3 | 4);
+    setStep((prev) => Math.min(prev + 1, 5) as 1 | 2 | 3 | 4 | 5);
   };
 
   const handleBack = () => {
-    setStep((prev) => Math.max(prev - 1, 1) as 1 | 2 | 3 | 4);
+    setStep((prev) => Math.max(prev - 1, 1) as 1 | 2 | 3 | 4 | 5);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -90,9 +126,21 @@ export const RegisterModal: React.FC = () => {
     const selectedApp = applications.find((a) => a.id === formData.applicationId);
     const selectedIni = initiatives.find((i) => i.id === formData.initiativeId);
 
-    const rels: { targetId: string; type: 'Built on' | 'Uses' | 'Part of' }[] = [];
+    const rels: { targetId: string; type: Relationship['type']; dataFlowDetails?: Relationship['dataFlowDetails'] }[] = [];
     if (formData.platformId) {
-      rels.push({ targetId: formData.platformId, type: 'Built on' });
+      rels.push({
+        targetId: formData.platformId,
+        type: 'Built on',
+        dataFlowDetails:
+          formData.includeDataFlow && formData.dataFlowDataExchanged.trim()
+            ? {
+                direction: formData.dataFlowDirection,
+                dataExchanged: formData.dataFlowDataExchanged,
+                integrationType: 'Not specified',
+                criticality: formData.dataFlowCriticality,
+              }
+            : undefined,
+      });
     }
     if (formData.applicationId) {
       rels.push({ targetId: formData.applicationId, type: 'Uses' });
@@ -107,10 +155,11 @@ export const RegisterModal: React.FC = () => {
         type: formData.type,
         subtitle: `Enterprise ${formData.type.toLowerCase()}`,
         description: formData.description || 'Newly registered enterprise AI asset.',
-        department: formData.department,
+        department: selectedBusinessUnit?.name || 'Other',
+        businessUnitId: formData.businessUnitId,
         businessOwner: formData.businessOwner,
         technicalOwner: formData.technicalOwner,
-        team: formData.team || `${formData.department} Team`,
+        team: formData.team || `${selectedBusinessUnit?.name || 'Enterprise'} Team`,
         lifecycleStage: formData.lifecycleStage,
         status: formData.status,
         priority: formData.priority,
@@ -121,13 +170,26 @@ export const RegisterModal: React.FC = () => {
         applicationName: selectedApp?.name,
         initiativeId: formData.initiativeId,
         initiativeName: selectedIni?.name,
-        annualCost: Number(formData.annualCost),
-        devCost: Number(formData.devCost),
-        opsCost: Number(formData.opsCost),
-        sharedCost: Number(formData.sharedCost),
+        annualCost,
+        devCost: formData.devCost,
+        opsCost: formData.opsCost,
+        sharedCost: formData.sharedCost,
         isCostEstimated: formData.isCostEstimated,
-        valueEvidenceStatus: formData.valueEvidenceStatus,
-        intendedOutcome: formData.intendedOutcome,
+        costCalculationBasis:
+          formData.resourceType && matchedRate
+            ? `Includes ${formData.resourceHours} hrs of ${formData.resourceType} time at £${matchedRate.hourlyRate}/hr`
+            : undefined,
+        valueEvidenceStatus: valueHypothesis.status === 'Not defined' ? 'None' : 'In progress',
+        intendedOutcome: formData.outcomeDescription || undefined,
+        outcome: formData.outcomeName.trim()
+          ? {
+              name: formData.outcomeName,
+              category: valueHypothesis.benefitCategory || '',
+              description: formData.outcomeDescription,
+              businessOwner: formData.businessOwner,
+            }
+          : undefined,
+        valueHypothesis,
         dependencies: formData.dependencies ? formData.dependencies.split(',').map((s) => s.trim()) : [],
       },
       rels
@@ -142,7 +204,7 @@ export const RegisterModal: React.FC = () => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-        {/* Header matching screenshot 6 */}
+        {/* Header */}
         <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between shrink-0">
           <div>
             <h2 className="text-lg font-bold text-slate-900 tracking-tight">Add AI Initiative</h2>
@@ -156,29 +218,20 @@ export const RegisterModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Stepper matching screenshot 6 */}
-        <div className="px-6 py-3.5 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between text-xs font-medium shrink-0">
-          {[
-            { num: 1, label: 'Basic details' },
-            { num: 2, label: 'Ownership' },
-            { num: 3, label: 'Cost & outcomes' },
-            { num: 4, label: 'Relationships' },
-          ].map((s) => {
+        {/* Stepper */}
+        <div className="px-6 py-3.5 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between text-xs font-medium shrink-0 overflow-x-auto">
+          {STEPS.map((s) => {
             const isCompleted = step > s.num;
             const isCurrent = step === s.num;
             return (
               <div
                 key={s.num}
-                className={`flex items-center gap-2 ${
-                  isCurrent
-                    ? 'text-blue-600 font-bold'
-                    : isCompleted
-                    ? 'text-slate-700 font-medium'
-                    : 'text-slate-400'
+                className={`flex items-center gap-2 shrink-0 ${
+                  isCurrent ? 'text-blue-600 font-bold' : isCompleted ? 'text-slate-700 font-medium' : 'text-slate-400'
                 }`}
               >
                 <div
-                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
                     isCurrent
                       ? 'bg-blue-600 text-white shadow-xs'
                       : isCompleted
@@ -253,22 +306,20 @@ export const RegisterModal: React.FC = () => {
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Department <span className="text-rose-500">*</span>
+                    Business unit <span className="text-rose-500">*</span>
                   </label>
                   <select
-                    value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    value={formData.businessUnitId}
+                    onChange={(e) => setFormData({ ...formData, businessUnitId: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500 bg-white"
                   >
-                    <option value="Customer Services">Customer Services</option>
-                    <option value="IT & Digital">IT & Digital</option>
-                    <option value="Finance">Finance</option>
-                    <option value="HR">HR</option>
-                    <option value="Operations">Operations</option>
-                    <option value="Sales">Sales</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="Other">Other</option>
+                    {activeBusinessUnits.map((bu) => (
+                      <option key={bu.id} value={bu.id}>
+                        {bu.name}
+                      </option>
+                    ))}
                   </select>
+                  {errors.businessUnitId && <p className="text-rose-500 text-[11px] mt-1">{errors.businessUnitId}</p>}
                 </div>
 
                 <div>
@@ -333,7 +384,7 @@ export const RegisterModal: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Team / Business Unit</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Team</label>
                   <input
                     type="text"
                     placeholder="e.g. Customer Care Automation"
@@ -374,78 +425,87 @@ export const RegisterModal: React.FC = () => {
             </div>
           )}
 
-          {/* STEP 3: COST & OUTCOMES */}
+          {/* STEP 3: INVESTMENT */}
           {step === 3 && (
             <div className="space-y-4 animate-in fade-in duration-150">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Estimated Annual Cost (£)
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.annualCost}
-                    onChange={(e) => setFormData({ ...formData, annualCost: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Value Evidence Status
-                  </label>
-                  <select
-                    value={formData.valueEvidenceStatus}
-                    onChange={(e) => setFormData({ ...formData, valueEvidenceStatus: e.target.value as ValueEvidenceStatus })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="Documented">Documented Evidence</option>
-                    <option value="In progress">In Progress</option>
-                    <option value="Planned">Planned</option>
-                    <option value="None">None</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Cost Breakdown Details */}
               <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-lg space-y-3">
                 <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                  Cost Breakdown (Optional)
+                  Resource cost calculator (optional)
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                      Dev Cost (£)
-                    </label>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">Resource type</label>
+                    <select
+                      value={formData.resourceType}
+                      onChange={(e) => setFormData({ ...formData, resourceType: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
+                    >
+                      <option value="">Select role...</option>
+                      {activeRoles.map((role) => (
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">Estimated hours</label>
                     <input
                       type="number"
-                      value={formData.devCost}
-                      onChange={(e) => setFormData({ ...formData, devCost: Number(e.target.value) })}
+                      value={formData.resourceHours}
+                      onChange={(e) => setFormData({ ...formData, resourceHours: Number(e.target.value) })}
                       className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                      Ops Cost (£)
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.opsCost}
-                      onChange={(e) => setFormData({ ...formData, opsCost: Number(e.target.value) })}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
-                    />
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">Cost rate applied</label>
+                    <div className="px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-700 text-xs">
+                      {matchedRate ? `£${matchedRate.hourlyRate}/hr` : 'Select a role'}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                      Shared Platform (£)
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.sharedCost}
-                      onChange={(e) => setFormData({ ...formData, sharedCost: Number(e.target.value) })}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
-                    />
-                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-slate-600">
+                    Computed labour cost: <strong className="text-slate-900">{formatGBP(computedLabourCost)}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!matchedRate || computedLabourCost <= 0}
+                    onClick={() => setFormData((prev) => ({ ...prev, devCost: prev.devCost + computedLabourCost }))}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:pointer-events-none text-white rounded text-[11px] font-semibold transition-colors"
+                  >
+                    Add to development cost
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Development cost (£)</label>
+                  <input
+                    type="number"
+                    value={formData.devCost}
+                    onChange={(e) => setFormData({ ...formData, devCost: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Annual operating cost (£)</label>
+                  <input
+                    type="number"
+                    value={formData.opsCost}
+                    onChange={(e) => setFormData({ ...formData, opsCost: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Platform / shared cost (£)</label>
+                  <input
+                    type="number"
+                    value={formData.sharedCost}
+                    onChange={(e) => setFormData({ ...formData, sharedCost: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
                 </div>
               </div>
 
@@ -458,27 +518,48 @@ export const RegisterModal: React.FC = () => {
                   className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
                 <label htmlFor="isCostEstimated" className="text-slate-700 font-medium">
-                  Mark as estimated cost only (flagged in Information Gaps if true)
+                  Cost confidence: mark as estimated (flagged in Information Gaps if true)
                 </label>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Intended Business Outcome
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Reduce first-tier ticket escalations by 30% and maintain customer satisfaction > 90%."
-                  value={formData.intendedOutcome}
-                  onChange={(e) => setFormData({ ...formData, intendedOutcome: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-                />
+              <div className="p-2.5 rounded bg-blue-50/60 border border-blue-200/80 text-[11px] text-blue-900 flex items-center justify-between">
+                <span>Total estimated annual cost</span>
+                <strong>{formatGBP(annualCost)}</strong>
               </div>
             </div>
           )}
 
-          {/* STEP 4: RELATIONSHIPS */}
+          {/* STEP 4: INTENDED OUTCOME */}
           {step === 4 && (
+            <div className="space-y-4 animate-in fade-in duration-150">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Outcome name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Reduce Tier-1 support handling time"
+                  value={formData.outcomeName}
+                  onChange={(e) => setFormData({ ...formData, outcomeName: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Intended business outcome</label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Reduce first-tier ticket escalations by 30% and maintain customer satisfaction > 90%."
+                  value={formData.outcomeDescription}
+                  onChange={(e) => setFormData({ ...formData, outcomeDescription: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <ValueHypothesisForm value={valueHypothesis} onChange={setValueHypothesis} />
+            </div>
+          )}
+
+          {/* STEP 5: RELATIONSHIPS */}
+          {step === 5 && (
             <div className="space-y-4 animate-in fade-in duration-150">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -552,13 +633,71 @@ export const RegisterModal: React.FC = () => {
                 />
               </div>
 
+              {formData.platformId && (
+                <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-lg space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="includeDataFlow"
+                      checked={formData.includeDataFlow}
+                      onChange={(e) => setFormData({ ...formData, includeDataFlow: e.target.checked })}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="includeDataFlow" className="text-slate-700 font-semibold">
+                      Describe the data flow with this platform (optional)
+                    </label>
+                  </div>
+
+                  {formData.includeDataFlow && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">Data exchanged</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Customer tickets, contact records"
+                          value={formData.dataFlowDataExchanged}
+                          onChange={(e) => setFormData({ ...formData, dataFlowDataExchanged: e.target.value })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">Direction</label>
+                        <select
+                          value={formData.dataFlowDirection}
+                          onChange={(e) =>
+                            setFormData({ ...formData, dataFlowDirection: e.target.value as 'inbound' | 'outbound' | 'bidirectional' })
+                          }
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
+                        >
+                          <option value="inbound">Inbound</option>
+                          <option value="outbound">Outbound</option>
+                          <option value="bidirectional">Bidirectional</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">Criticality</label>
+                        <select
+                          value={formData.dataFlowCriticality}
+                          onChange={(e) => setFormData({ ...formData, dataFlowCriticality: e.target.value as 'High' | 'Medium' | 'Low' })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-slate-900 focus:outline-none focus:border-blue-500 text-xs"
+                        >
+                          <option value="High">High</option>
+                          <option value="Medium">Medium</option>
+                          <option value="Low">Low</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="p-3 bg-blue-50/60 rounded-lg border border-blue-200/80 text-[11px] text-blue-900">
                 Registering this item connects it to the AI Estate Map and updates portfolio metrics automatically.
               </div>
             </div>
           )}
 
-          {/* Footer Actions matching screenshot 6 */}
+          {/* Footer Actions */}
           <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
             <div>
               {step > 1 ? (
@@ -590,8 +729,9 @@ export const RegisterModal: React.FC = () => {
                 Save Draft
               </button>
 
-              {step < 4 ? (
+              {step < 5 ? (
                 <button
+                  key="next-button"
                   type="button"
                   onClick={handleNext}
                   className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
@@ -601,6 +741,7 @@ export const RegisterModal: React.FC = () => {
                 </button>
               ) : (
                 <button
+                  key="submit-button"
                   type="submit"
                   className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
                 >

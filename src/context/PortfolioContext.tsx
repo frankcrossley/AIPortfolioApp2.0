@@ -14,9 +14,23 @@ import {
   FilterState,
   ActiveNav,
   EstateItemType,
+  BusinessUnit,
+  ResourceRate,
+  BenefitCategoryConfig,
+  StrategicObjectiveConfig,
+  RequiredFieldsConfig,
+  PortfolioViewMode,
 } from '../types';
 import { INITIAL_ESTATE_ITEMS, INITIAL_RELATIONSHIPS } from '../data/mockData';
+import {
+  INITIAL_BUSINESS_UNITS,
+  INITIAL_RESOURCE_RATES,
+  INITIAL_BENEFIT_CATEGORIES,
+  INITIAL_STRATEGIC_OBJECTIVES,
+  INITIAL_REQUIRED_FIELDS,
+} from '../data/configData';
 import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../lib/firebase';
+import { isQuantified, isValidatedStatus } from '../lib/valueCalculations';
 import { useAuth } from './AuthContext';
 
 interface ToastState {
@@ -36,6 +50,9 @@ interface PortfolioContextType {
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   resetFilters: () => void;
   applyGapFilter: (gapKey: string) => void;
+  portfolioViewMode: PortfolioViewMode;
+  setPortfolioViewMode: (v: PortfolioViewMode) => void;
+  goToPortfolioView: (v: PortfolioViewMode) => void;
   viewItem: (id: string) => void;
   viewPlatform: (id: string) => void;
   isRegisterModalOpen: boolean;
@@ -61,6 +78,11 @@ interface PortfolioContextType {
     estimatedCost: number;
     productionAgents: number;
     valueEvidenceCount: number;
+    totalEstimatedAnnualBenefit: number;
+    validatedAnnualBenefit: number;
+    estimatedOnlyAnnualBenefit: number;
+    benefitContributingCount: number;
+    initiativesWithValueHypothesis: number;
   };
   gaps: {
     missingOwner: EstateItem[];
@@ -68,6 +90,7 @@ interface PortfolioContextType {
     missingOutcome: EstateItem[];
     noPlatform: EstateItem[];
     notUpdated90Days: EstateItem[];
+    noValueHypothesis: EstateItem[];
   };
   compositionByType: {
     type: string;
@@ -85,6 +108,37 @@ interface PortfolioContextType {
     count: number;
     percentage: number;
   }[];
+  investmentByPlatform: {
+    platform: string;
+    cost: number;
+    count: number;
+  }[];
+  benefitByCategory: {
+    category: string;
+    benefit: number;
+    count: number;
+  }[];
+  benefitByDepartment: {
+    department: string;
+    benefit: number;
+    count: number;
+  }[];
+
+  // Configuration Portal
+  businessUnits: BusinessUnit[];
+  addBusinessUnit: (bu: Omit<BusinessUnit, 'id'>) => void;
+  updateBusinessUnit: (id: string, updates: Partial<BusinessUnit>) => void;
+  resourceRates: ResourceRate[];
+  addResourceRate: (rate: Omit<ResourceRate, 'id'>) => void;
+  updateResourceRate: (id: string, updates: Partial<ResourceRate>) => void;
+  benefitCategories: BenefitCategoryConfig[];
+  addBenefitCategory: (cat: Omit<BenefitCategoryConfig, 'id'>) => void;
+  updateBenefitCategory: (id: string, updates: Partial<BenefitCategoryConfig>) => void;
+  strategicObjectives: StrategicObjectiveConfig[];
+  addStrategicObjective: (obj: Omit<StrategicObjectiveConfig, 'id'>) => void;
+  updateStrategicObjective: (id: string, updates: Partial<StrategicObjectiveConfig>) => void;
+  requiredFields: RequiredFieldsConfig;
+  updateRequiredFields: (updates: Partial<RequiredFieldsConfig>) => void;
 }
 
 const defaultFilters: FilterState = {
@@ -106,10 +160,58 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedPlatformId, setSelectedPlatformId] = useState<string | null>('plt-2');
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
+  const [portfolioViewMode, setPortfolioViewMode] = useState<PortfolioViewMode>('all');
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastState[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCloudSynced, setIsCloudSynced] = useState(false);
+
+  // Configuration Portal state (kept local to the prototype; not synced to Firestore)
+  const [businessUnits, setBusinessUnits] = useState<BusinessUnit[]>(INITIAL_BUSINESS_UNITS);
+  const [resourceRates, setResourceRates] = useState<ResourceRate[]>(INITIAL_RESOURCE_RATES);
+  const [benefitCategories, setBenefitCategories] = useState<BenefitCategoryConfig[]>(INITIAL_BENEFIT_CATEGORIES);
+  const [strategicObjectives, setStrategicObjectives] = useState<StrategicObjectiveConfig[]>(INITIAL_STRATEGIC_OBJECTIVES);
+  const [requiredFields, setRequiredFields] = useState<RequiredFieldsConfig>(INITIAL_REQUIRED_FIELDS);
+
+  const addBusinessUnit = (bu: Omit<BusinessUnit, 'id'>) => {
+    const id = `bu-custom-${Date.now()}`;
+    setBusinessUnits((prev) => [...prev, { ...bu, id }]);
+    showToast(`Added business unit "${bu.name}"`);
+  };
+  const updateBusinessUnit = (id: string, updates: Partial<BusinessUnit>) => {
+    setBusinessUnits((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+  };
+
+  const addResourceRate = (rate: Omit<ResourceRate, 'id'>) => {
+    const id = `rate-custom-${Date.now()}`;
+    setResourceRates((prev) => [...prev, { ...rate, id }]);
+    showToast(`Added resource rate for "${rate.role}"`);
+  };
+  const updateResourceRate = (id: string, updates: Partial<ResourceRate>) => {
+    setResourceRates((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+  };
+
+  const addBenefitCategory = (cat: Omit<BenefitCategoryConfig, 'id'>) => {
+    const id = `cat-custom-${Date.now()}`;
+    setBenefitCategories((prev) => [...prev, { ...cat, id }]);
+    showToast(`Added benefit category "${cat.name}"`);
+  };
+  const updateBenefitCategory = (id: string, updates: Partial<BenefitCategoryConfig>) => {
+    setBenefitCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+  };
+
+  const addStrategicObjective = (obj: Omit<StrategicObjectiveConfig, 'id'>) => {
+    const id = `obj-custom-${Date.now()}`;
+    setStrategicObjectives((prev) => [...prev, { ...obj, id }]);
+    showToast(`Added strategic objective "${obj.name}"`);
+  };
+  const updateStrategicObjective = (id: string, updates: Partial<StrategicObjectiveConfig>) => {
+    setStrategicObjectives((prev) => prev.map((o) => (o.id === id ? { ...o, ...updates } : o)));
+  };
+
+  const updateRequiredFields = (updates: Partial<RequiredFieldsConfig>) => {
+    setRequiredFields((prev) => ({ ...prev, ...updates }));
+  };
 
   const showToast = (message: string, type: 'success' | 'info' | 'warning' = 'success') => {
     const id = Date.now().toString();
@@ -239,7 +341,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const addItem = async (
     itemData: Omit<EstateItem, 'id' | 'lastUpdated' | 'lastUpdatedDaysAgo'>,
-    relationshipsList?: { targetId: string; type: Relationship['type'] }[]
+    relationshipsList?: { targetId: string; type: Relationship['type']; dataFlowDetails?: Relationship['dataFlowDetails'] }[]
   ) => {
     const newId = `custom-${Date.now()}`;
     const newItem: EstateItem = {
@@ -271,6 +373,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 targetId: rel.targetId,
                 type: rel.type,
                 label: rel.type,
+                dataFlowDetails: rel.dataFlowDetails,
                 authorId: user.uid,
               })
             );
@@ -290,6 +393,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           targetId: rel.targetId,
           type: rel.type,
           label: rel.type,
+          dataFlowDetails: rel.dataFlowDetails,
         }));
         setRelationships((prev) => [...prev, ...newRels]);
       }
@@ -364,6 +468,13 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     resetFilters();
     setFilters((prev) => ({ ...prev, gapType: gapKey }));
     setSelectedItemId(null);
+    setPortfolioViewMode('quality');
+    setActiveNav('portfolio');
+  };
+
+  // Navigate to the Portfolio table pre-set to a specific view mode (Investment / Value / Data Quality)
+  const goToPortfolioView = (v: PortfolioViewMode) => {
+    setPortfolioViewMode(v);
     setActiveNav('portfolio');
   };
 
@@ -384,6 +495,22 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       (i) => i.valueEvidenceStatus === 'Documented' || i.valueEvidenceStatus === 'Available'
     ).length;
 
+    // Estimated annual benefit: only count items with a quantified value hypothesis.
+    // A missing or non-numeric estimate is "Not quantified", never treated as £0.
+    const quantified = items.filter((i) => isQuantified(i.valueHypothesis));
+    const totalEstimatedAnnualBenefit = quantified.reduce(
+      (acc, i) => acc + (i.valueHypothesis?.estimatedAnnualBenefit || 0),
+      0
+    );
+    const validatedAnnualBenefit = quantified
+      .filter((i) => isValidatedStatus(i.valueHypothesis?.status))
+      .reduce((acc, i) => acc + (i.valueHypothesis?.estimatedAnnualBenefit || 0), 0);
+    const estimatedOnlyAnnualBenefit = totalEstimatedAnnualBenefit - validatedAnnualBenefit;
+    const benefitContributingCount = quantified.length;
+    const initiativesWithValueHypothesis = items.filter(
+      (i) => i.valueHypothesis && i.valueHypothesis.status !== 'Not defined'
+    ).length;
+
     return {
       totalInitiatives,
       annualEstimatedCost: totalAnnualCost,
@@ -391,6 +518,11 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       estimatedCost,
       productionAgents,
       valueEvidenceCount,
+      totalEstimatedAnnualBenefit,
+      validatedAnnualBenefit,
+      estimatedOnlyAnnualBenefit,
+      benefitContributingCount,
+      initiativesWithValueHypothesis,
     };
   }, [items]);
 
@@ -399,6 +531,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const missingOwner = items.filter((i) => !i.businessOwner || i.businessOwner.trim() === '');
     const estimatedCostOnly = items.filter((i) => i.isCostEstimated === true);
     const missingOutcome = items.filter((i) => !i.intendedOutcome || i.intendedOutcome.trim() === '');
+    const noValueHypothesis = items.filter(
+      (i) => !i.valueHypothesis || i.valueHypothesis.status === 'Not defined'
+    );
     const noPlatform = items.filter(
       (i) => i.type === 'Agent' && !i.platformId && !i.platformName
     );
@@ -412,6 +547,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       missingOutcome,
       noPlatform,
       notUpdated90Days,
+      noValueHypothesis,
     };
   }, [items]);
 
@@ -493,6 +629,59 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   }, [items]);
 
+  // Investment by platform (direct annual cost of items attributed to each platform)
+  const investmentByPlatform = useMemo(() => {
+    const platformMap: Record<string, { cost: number; count: number }> = {};
+
+    items.forEach((item) => {
+      const platformName = item.platformName || (item.type === 'Platform' ? item.name : undefined);
+      if (!platformName) return;
+      if (!platformMap[platformName]) {
+        platformMap[platformName] = { cost: 0, count: 0 };
+      }
+      platformMap[platformName].cost += item.annualCost || 0;
+      platformMap[platformName].count += 1;
+    });
+
+    return Object.entries(platformMap)
+      .map(([platform, data]) => ({ platform, cost: data.cost, count: data.count }))
+      .sort((a, b) => b.cost - a.cost);
+  }, [items]);
+
+  // Estimated annual benefit by benefit category (quantified value hypotheses only)
+  const benefitByCategory = useMemo(() => {
+    const catMap: Record<string, { benefit: number; count: number }> = {};
+
+    items.forEach((item) => {
+      if (!isQuantified(item.valueHypothesis)) return;
+      const category = item.valueHypothesis?.benefitCategory || 'Uncategorised';
+      if (!catMap[category]) catMap[category] = { benefit: 0, count: 0 };
+      catMap[category].benefit += item.valueHypothesis?.estimatedAnnualBenefit || 0;
+      catMap[category].count += 1;
+    });
+
+    return Object.entries(catMap)
+      .map(([category, data]) => ({ category, benefit: data.benefit, count: data.count }))
+      .sort((a, b) => b.benefit - a.benefit);
+  }, [items]);
+
+  // Estimated annual benefit by department (quantified value hypotheses only)
+  const benefitByDepartment = useMemo(() => {
+    const deptMap: Record<string, { benefit: number; count: number }> = {};
+
+    items.forEach((item) => {
+      if (!isQuantified(item.valueHypothesis)) return;
+      const dept = item.department || 'Other';
+      if (!deptMap[dept]) deptMap[dept] = { benefit: 0, count: 0 };
+      deptMap[dept].benefit += item.valueHypothesis?.estimatedAnnualBenefit || 0;
+      deptMap[dept].count += 1;
+    });
+
+    return Object.entries(deptMap)
+      .map(([department, data]) => ({ department, benefit: data.benefit, count: data.count }))
+      .sort((a, b) => b.benefit - a.benefit);
+  }, [items]);
+
   return (
     <PortfolioContext.Provider
       value={{
@@ -511,6 +700,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setFilters,
         resetFilters,
         applyGapFilter,
+        portfolioViewMode,
+        setPortfolioViewMode,
+        goToPortfolioView,
         viewItem,
         viewPlatform,
         isRegisterModalOpen,
@@ -530,6 +722,23 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         compositionByType,
         investmentByDepartment,
         compositionByLifecycle,
+        investmentByPlatform,
+        benefitByCategory,
+        benefitByDepartment,
+        businessUnits,
+        addBusinessUnit,
+        updateBusinessUnit,
+        resourceRates,
+        addResourceRate,
+        updateResourceRate,
+        benefitCategories,
+        addBenefitCategory,
+        updateBenefitCategory,
+        strategicObjectives,
+        addStrategicObjective,
+        updateStrategicObjective,
+        requiredFields,
+        updateRequiredFields,
       }}
     >
       {children}
