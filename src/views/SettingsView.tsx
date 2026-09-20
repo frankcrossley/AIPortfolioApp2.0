@@ -1,14 +1,23 @@
 import React, { useState } from 'react';
-import { Plus, Pencil, Check, X, Building2, Coins, Tags, ListTree, ClipboardCheck } from 'lucide-react';
+import { Plus, Pencil, Check, X, Building2, Coins, Tags, ListTree, ClipboardCheck, Users, UsersRound } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { Header } from '../components/Header';
-import { BusinessUnit, ResourceRate, BenefitCategoryConfig, StrategicObjectiveConfig } from '../types';
+import { BusinessUnit, ResourceRate, BenefitCategoryConfig, StrategicObjectiveConfig, Person, Team } from '../types';
 import { AI_TYPES, LIFECYCLE_STAGES, ITEM_STATUSES, CONFIDENCE_LEVELS } from '../data/configData';
 
-type SettingsTab = 'business-units' | 'resource-rates' | 'benefit-categories' | 'classifications' | 'required-fields';
+type SettingsTab =
+  | 'business-units'
+  | 'people'
+  | 'teams'
+  | 'resource-rates'
+  | 'benefit-categories'
+  | 'classifications'
+  | 'required-fields';
 
 const TABS: { id: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'business-units', label: 'Business Units', icon: Building2 },
+  { id: 'people', label: 'People', icon: Users },
+  { id: 'teams', label: 'Teams', icon: UsersRound },
   { id: 'resource-rates', label: 'Resource Cost Rates', icon: Coins },
   { id: 'benefit-categories', label: 'Benefit Categories', icon: Tags },
   { id: 'classifications', label: 'Portfolio Classifications', icon: ListTree },
@@ -42,6 +51,8 @@ export const SettingsView: React.FC = () => {
         </div>
 
         {tab === 'business-units' && <BusinessUnitsTab />}
+        {tab === 'people' && <PeopleTab />}
+        {tab === 'teams' && <TeamsTab />}
         {tab === 'resource-rates' && <ResourceRatesTab />}
         {tab === 'benefit-categories' && <BenefitCategoriesTab />}
         {tab === 'classifications' && <ClassificationsTab />}
@@ -264,6 +275,184 @@ const BusinessUnitsTab: React.FC = () => {
                     <button onClick={() => startEdit(bu)} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded">
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
+                  </td>
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+};
+
+// ============================================================
+// PEOPLE
+// Controlled records backing the ownership searchable dropdowns in the
+// Add Estate Item / Add Initiative drawers.
+// ============================================================
+
+const PeopleTab: React.FC = () => {
+  const { people, addPerson, updatePerson } = usePortfolio();
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const emptyDraft: Omit<Person, 'id'> = { name: '', email: '', roleTitle: '', status: 'Active' };
+  const [draft, setDraft] = useState<Omit<Person, 'id'>>(emptyDraft);
+
+  const startEdit = (p: Person) => {
+    setEditingId(p.id);
+    setDraft({ name: p.name, email: p.email || '', roleTitle: p.roleTitle || '', status: p.status });
+  };
+
+  const PersonForm: React.FC<{ onSave: () => void; onCancel: () => void }> = ({ onSave, onCancel }) => (
+    <tr className="bg-blue-50/30">
+      <td className="py-2 px-4">
+        <input autoFocus value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Name" className="w-full px-2 py-1 border border-slate-200 rounded text-xs" />
+      </td>
+      <td className="py-2 px-3">
+        <input value={draft.roleTitle} onChange={(e) => setDraft({ ...draft, roleTitle: e.target.value })} placeholder="Role title" className="w-full px-2 py-1 border border-slate-200 rounded text-xs" />
+      </td>
+      <td className="py-2 px-3">
+        <input value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="Email" className="w-full px-2 py-1 border border-slate-200 rounded text-xs" />
+      </td>
+      <td className="py-2 px-4 text-right space-x-1">
+        <button onClick={onSave} className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded"><Check className="w-3.5 h-3.5" /></button>
+        <button onClick={onCancel} className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded"><X className="w-3.5 h-3.5" /></button>
+      </td>
+    </tr>
+  );
+
+  return (
+    <Card
+      title="People"
+      subtitle="Controlled owner records used by the Add Estate Item and Add Initiative drawers, so repeated entry can't create duplicates."
+      action={
+        <button
+          onClick={() => { setIsAdding(true); setEditingId(null); setDraft(emptyDraft); }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-md shadow-xs hover:bg-blue-700 transition-colors shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add person
+        </button>
+      }
+    >
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs text-slate-600">
+          <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            <tr>
+              <th className="py-3 px-4">Name</th>
+              <th className="py-3 px-3">Role title</th>
+              <th className="py-3 px-3">Email</th>
+              <th className="py-3 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {isAdding && (
+              <PersonForm
+                onSave={() => { if (!draft.name.trim()) return; addPerson(draft); setIsAdding(false); }}
+                onCancel={() => setIsAdding(false)}
+              />
+            )}
+            {people.map((p) =>
+              editingId === p.id ? (
+                <PersonForm key={p.id} onSave={() => { updatePerson(p.id, draft); setEditingId(null); }} onCancel={() => setEditingId(null)} />
+              ) : (
+                <tr key={p.id} className="hover:bg-slate-50/60">
+                  <td className="py-2.5 px-4 font-semibold text-slate-900">{p.name}</td>
+                  <td className="py-2.5 px-3 text-slate-600">{p.roleTitle || '—'}</td>
+                  <td className="py-2.5 px-3 text-slate-600">{p.email || '—'}</td>
+                  <td className="py-2.5 px-4 text-right space-x-1">
+                    <button onClick={() => startEdit(p)} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <StatusToggle status={p.status} onToggle={() => updatePerson(p.id, { status: p.status === 'Active' ? 'Inactive' : 'Active' })} />
+                  </td>
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+};
+
+// ============================================================
+// TEAMS
+// ============================================================
+
+const TeamsTab: React.FC = () => {
+  const { teams, businessUnits, addTeam, updateTeam } = usePortfolio();
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const emptyDraft: Omit<Team, 'id'> = { name: '', businessUnitId: undefined, status: 'Active' };
+  const [draft, setDraft] = useState<Omit<Team, 'id'>>(emptyDraft);
+
+  const startEdit = (t: Team) => {
+    setEditingId(t.id);
+    setDraft({ name: t.name, businessUnitId: t.businessUnitId, status: t.status });
+  };
+
+  const TeamForm: React.FC<{ onSave: () => void; onCancel: () => void }> = ({ onSave, onCancel }) => (
+    <tr className="bg-blue-50/30">
+      <td className="py-2 px-4">
+        <input autoFocus value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Team name" className="w-full px-2 py-1 border border-slate-200 rounded text-xs" />
+      </td>
+      <td className="py-2 px-3">
+        <select value={draft.businessUnitId || ''} onChange={(e) => setDraft({ ...draft, businessUnitId: e.target.value || undefined })} className="w-full px-2 py-1 border border-slate-200 rounded text-xs bg-white">
+          <option value="">None</option>
+          {businessUnits.map((bu) => (
+            <option key={bu.id} value={bu.id}>{bu.name}</option>
+          ))}
+        </select>
+      </td>
+      <td className="py-2 px-4 text-right space-x-1">
+        <button onClick={onSave} className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded"><Check className="w-3.5 h-3.5" /></button>
+        <button onClick={onCancel} className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded"><X className="w-3.5 h-3.5" /></button>
+      </td>
+    </tr>
+  );
+
+  return (
+    <Card
+      title="Teams"
+      subtitle="Controlled delivery and support team records used across the drawers."
+      action={
+        <button
+          onClick={() => { setIsAdding(true); setEditingId(null); setDraft(emptyDraft); }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-md shadow-xs hover:bg-blue-700 transition-colors shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add team
+        </button>
+      }
+    >
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs text-slate-600">
+          <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            <tr>
+              <th className="py-3 px-4">Name</th>
+              <th className="py-3 px-3">Business unit</th>
+              <th className="py-3 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {isAdding && (
+              <TeamForm
+                onSave={() => { if (!draft.name.trim()) return; addTeam(draft); setIsAdding(false); }}
+                onCancel={() => setIsAdding(false)}
+              />
+            )}
+            {teams.map((t) =>
+              editingId === t.id ? (
+                <TeamForm key={t.id} onSave={() => { updateTeam(t.id, draft); setEditingId(null); }} onCancel={() => setEditingId(null)} />
+              ) : (
+                <tr key={t.id} className="hover:bg-slate-50/60">
+                  <td className="py-2.5 px-4 font-semibold text-slate-900">{t.name}</td>
+                  <td className="py-2.5 px-3 text-slate-600">{businessUnits.find((bu) => bu.id === t.businessUnitId)?.name || '—'}</td>
+                  <td className="py-2.5 px-4 text-right space-x-1">
+                    <button onClick={() => startEdit(t)} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <StatusToggle status={t.status} onToggle={() => updateTeam(t.id, { status: t.status === 'Active' ? 'Inactive' : 'Active' })} />
                   </td>
                 </tr>
               )

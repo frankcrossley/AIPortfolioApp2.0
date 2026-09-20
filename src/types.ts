@@ -4,7 +4,14 @@ export type EstateItemType =
   | 'Agent'
   | 'Initiative'
   | 'Embedded AI'
-  | 'Experiment';
+  | 'Experiment'
+  | 'Other';
+
+// The record types offered when creating a new Estate Item. Initiatives are
+// business/delivery efforts and are modeled separately (see `Initiative`) -
+// 'Initiative' remains a member of EstateItemType only so that initiatives
+// can be adapted into the EstateItem shape for shared display components.
+export type EstateRecordType = Exclude<EstateItemType, 'Initiative'>;
 
 export type LifecycleStage =
   | 'Ideation'
@@ -98,9 +105,20 @@ export interface EstateItem {
   externalConsultancyCost?: number;
   internalTeamCost?: number;
   costCalculationBasis?: string;
+  costRecord?: CostRecord;
   outcome?: IntendedOutcome;
   valueHypothesis?: ValueHypothesis;
   measurement?: MeasurementInfo;
+
+  // Controlled master-data links (denormalized name kept in the legacy
+  // string fields above for backward-compatible display; the id links are
+  // the source of truth going forward for records created via the drawer).
+  businessOwnerId?: string;
+  technicalOwnerId?: string;
+  teamId?: string;
+  supportTeam?: string;
+  supportTeamId?: string;
+  relatedEstateItemIds?: string[];
 }
 
 export interface FilterState {
@@ -244,3 +262,72 @@ export interface RequiredFieldsConfig {
 }
 
 export type PortfolioViewMode = 'all' | 'investment' | 'value' | 'quality';
+
+// ============================================================
+// COST RECORDS
+// Structured financial/resource expenditure, distinct from the legacy flat
+// cost fields on EstateItem (kept for records created before this model).
+// Missing figures are never treated as zero - only entered figures count.
+// ============================================================
+
+export type CostStatus = 'Not recorded' | 'Estimated' | 'Confirmed' | 'Actual';
+export type CostPeriod = 'One-off' | 'Annual' | 'Monthly';
+
+export interface CostRecord {
+  status: CostStatus;
+  developmentCost?: number;
+  annualOperatingCost?: number;
+  platformSharedCost?: number;
+  internalResourceCost?: number;
+  externalConsultancyCost?: number;
+  period?: CostPeriod;
+  confidence?: ConfidenceLevel;
+  sourceNotes?: string;
+  lastUpdated?: string;
+}
+
+// ============================================================
+// MASTER DATA: PEOPLE & TEAMS
+// Controlled records backing the ownership searchable dropdowns, so
+// repeated free-text entry can't create duplicate people (e.g. "James
+// Smith" vs "J. Smith"). Managed from the Configuration Portal.
+// ============================================================
+
+export interface Person {
+  id: string;
+  name: string;
+  email?: string;
+  roleTitle?: string;
+  status: 'Active' | 'Inactive';
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  businessUnitId?: string;
+  status: 'Active' | 'Inactive';
+}
+
+// ============================================================
+// INITIATIVES
+// What the organisation is doing or building - a business/delivery effort,
+// distinct from the technical/operational Estate Items it may deliver
+// through. Shares almost all of EstateItem's shape (ownership, cost, value)
+// but drops the technical linking fields that don't apply to a programme
+// of work, and gains its own free-form links to the estate items it relates to.
+// ============================================================
+
+export interface Initiative
+  extends Omit<
+    EstateItem,
+    | 'type'
+    | 'platformId'
+    | 'platformName'
+    | 'applicationId'
+    | 'applicationName'
+    | 'initiativeId'
+    | 'initiativeName'
+    | 'dependencies'
+  > {
+  relatedEstateItemIds?: string[];
+}

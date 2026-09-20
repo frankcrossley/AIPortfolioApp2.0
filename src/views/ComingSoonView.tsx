@@ -6,13 +6,14 @@ import {
   Settings as SettingsIcon,
   ArrowRight,
   Sparkles,
+  Plus,
 } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { Header } from '../components/Header';
 import { ActiveNav } from '../types';
 
 export const ComingSoonView: React.FC<{ viewType: ActiveNav }> = ({ viewType }) => {
-  const { setActiveNav, openRegisterModal } = usePortfolio();
+  const { setActiveNav, openEstateItemDrawer } = usePortfolio();
 
   const getMetadata = () => {
     switch (viewType) {
@@ -130,10 +131,11 @@ export const ComingSoonView: React.FC<{ viewType: ActiveNav }> = ({ viewType }) 
             </button>
 
             <button
-              onClick={() => openRegisterModal()}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg shadow-xs transition-colors"
+              onClick={() => openEstateItemDrawer()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg shadow-xs transition-colors"
             >
-              Register New Initiative
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add to Portfolio</span>
             </button>
           </div>
         </div>

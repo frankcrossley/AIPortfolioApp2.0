@@ -1,6 +1,9 @@
-import { EstateItem, Relationship, IntendedOutcome, ValueHypothesis, MeasurementInfo } from '../types';
-import { DEPARTMENT_TO_BUSINESS_UNIT_ID } from './configData';
+import { EstateItem, Initiative, Relationship, IntendedOutcome, ValueHypothesis, MeasurementInfo } from '../types';
+import { DEPARTMENT_TO_BUSINESS_UNIT_ID, INITIAL_PEOPLE, INITIAL_TEAMS } from './configData';
 import { deriveEstimatedAnnualBenefit } from '../lib/valueCalculations';
+
+const PERSON_NAME_TO_ID: Record<string, string> = Object.fromEntries(INITIAL_PEOPLE.map((p) => [p.name, p.id]));
+const TEAM_NAME_TO_ID: Record<string, string> = Object.fromEntries(INITIAL_TEAMS.map((t) => [t.name, t.id]));
 
 const RAW_ESTATE_ITEMS: EstateItem[] = [
   // PLATFORMS
@@ -787,163 +790,8 @@ const RAW_ESTATE_ITEMS: EstateItem[] = [
     tags: ['Salesforce', 'Einstein', 'Embedded'],
   },
 
-  // INITIATIVES / PROJECTS
-  {
-    id: 'ini-1',
-    name: 'Customer Service Transformation',
-    type: 'Initiative',
-    subtitle: 'AI transformation programme',
-    description: 'Multi-quarter initiative unifying web, voice, and WhatsApp support into a single autonomous tier backed by human escalation.',
-    department: 'Customer Services',
-    businessOwner: 'Jonathan Vance',
-    technicalOwner: 'Elena Rostova',
-    team: 'Customer Operations',
-    lifecycleStage: 'In progress',
-    status: 'In progress',
-    priority: 'Critical',
-    annualCost: 480000,
-    devCost: 300000,
-    opsCost: 180000,
-    sharedCost: 0,
-    isCostEstimated: false,
-    valueEvidenceStatus: 'In progress',
-    intendedOutcome: 'Deliver £1.2m annualized support operational savings while lifting CSAT.',
-    businessFunction: 'Strategic Service Redesign',
-    dataClassification: 'Internal',
-    lastUpdated: '02 Nov 2025',
-    lastUpdatedDaysAgo: 24,
-    tags: ['Transformation', 'Customer Care', 'Strategic'],
-  },
-  {
-    id: 'ini-2',
-    name: 'Finance Automation Programme',
-    type: 'Initiative',
-    subtitle: 'End-to-end financial close & AP automation',
-    description: 'Streamlining purchase order matching, journal entry approvals, and variance narrative generation across all group subsidiaries.',
-    department: 'Finance',
-    businessOwner: 'Rachel Green',
-    technicalOwner: 'David Chen',
-    team: 'Global Finance Centre',
-    lifecycleStage: 'In progress',
-    status: 'In progress',
-    priority: 'High',
-    annualCost: 360000,
-    devCost: 220000,
-    opsCost: 140000,
-    sharedCost: 0,
-    isCostEstimated: false,
-    valueEvidenceStatus: 'In progress',
-    intendedOutcome: 'Cut manual accounting effort by 4,000 hours annually.',
-    businessFunction: 'Finance Digitalisation',
-    dataClassification: 'Confidential',
-    lastUpdated: '28 Oct 2025',
-    lastUpdatedDaysAgo: 29,
-    tags: ['Finance', 'Automation', 'ERP'],
-  },
-  {
-    id: 'ini-3',
-    name: 'HR AI Enablement',
-    type: 'Initiative',
-    subtitle: 'Modernised employee experience and onboarding',
-    description: 'Empowers talent acquisition, employee self-service policy inquiries, and performance feedback synthesis.',
-    department: 'HR',
-    businessOwner: 'Sarah Jenkins',
-    technicalOwner: 'Sarah Lin',
-    team: 'People & Culture',
-    lifecycleStage: 'Pilot',
-    status: 'Active',
-    priority: 'Medium',
-    annualCost: 190000,
-    devCost: 120000,
-    opsCost: 70000,
-    sharedCost: 0,
-    isCostEstimated: false,
-    valueEvidenceStatus: 'Documented',
-    intendedOutcome: 'Increase employee engagement index by 8 points and shorten HR response times.',
-    businessFunction: 'Employee Lifecycle Modernisation',
-    dataClassification: 'Internal',
-    lastUpdated: '20 Oct 2025',
-    lastUpdatedDaysAgo: 37,
-    tags: ['People', 'HR', 'Experience'],
-  },
-  {
-    id: 'ini-4',
-    name: 'Enterprise Copilot Rollout',
-    type: 'Initiative',
-    subtitle: 'Scale Microsoft 365 Copilot to 3,500 knowledge workers',
-    description: 'Change management, license allocation, security governance, and value measurement for company-wide generative AI adoption.',
-    department: 'IT & Digital',
-    businessOwner: 'Jonathan Vance',
-    technicalOwner: 'Mark Taylor',
-    team: 'Digital Workplace',
-    lifecycleStage: 'Production',
-    status: 'Active',
-    priority: 'Critical',
-    annualCost: 540000,
-    devCost: 160000,
-    opsCost: 380000,
-    sharedCost: 0,
-    isCostEstimated: false,
-    valueEvidenceStatus: 'Documented',
-    intendedOutcome: 'Achieve 82% weekly active adoption and save average 3.1 hours/worker/week.',
-    businessFunction: 'Digital Workplace Strategy',
-    dataClassification: 'Internal',
-    lastUpdated: '12 Nov 2025',
-    lastUpdatedDaysAgo: 14,
-    tags: ['Copilot', 'Adoption', 'Productivity'],
-  },
-  {
-    id: 'ini-5',
-    name: 'Digital Workplace Modernisation',
-    type: 'Initiative',
-    subtitle: 'Unified enterprise service portal & autonomous IT',
-    description: 'Consolidating legacy help desks into modern automated workflows with zero-touch software provisioning.',
-    department: 'IT & Digital',
-    businessOwner: 'Mark Taylor',
-    technicalOwner: 'David Chen',
-    team: 'IT Infrastructure',
-    lifecycleStage: 'Development',
-    status: 'In progress',
-    priority: 'Medium',
-    annualCost: 320000,
-    devCost: 200000,
-    opsCost: 120000,
-    sharedCost: 0,
-    isCostEstimated: true, // Information Gap: Estimated only
-    valueEvidenceStatus: 'Planned',
-    intendedOutcome: 'Reduce IT ticket resolution cost by 40%.',
-    businessFunction: 'IT Infrastructure',
-    dataClassification: 'Internal',
-    lastUpdated: '04 Oct 2025',
-    lastUpdatedDaysAgo: 53,
-    tags: ['Workplace', 'ITSM', 'Modernisation'],
-  },
-  {
-    id: 'ini-6',
-    name: 'Supply Chain Intelligence',
-    type: 'Initiative',
-    subtitle: 'Predictive logistics & inventory balancing',
-    description: 'Machine learning forecasting warehouse stockouts, freight rate volatility, and port delay contingencies.',
-    department: 'Operations',
-    // Missing businessOwner (Information Gap)
-    technicalOwner: 'Kiran Patel',
-    team: 'Supply Chain Logistics',
-    lifecycleStage: 'Evaluation',
-    status: 'Planning',
-    priority: 'High',
-    annualCost: 275000,
-    devCost: 180000,
-    opsCost: 95000,
-    sharedCost: 0,
-    isCostEstimated: true,
-    valueEvidenceStatus: 'None',
-    intendedOutcome: 'Reduce warehouse buffer stock by 12% without increasing stockouts.',
-    businessFunction: 'Supply Chain Planning',
-    dataClassification: 'Confidential',
-    lastUpdated: '15 Jun 2025',
-    lastUpdatedDaysAgo: 164, // Information Gap: >90 days old!
-    tags: ['Supply Chain', 'Logistics', 'Forecasting'],
-  },
+  // INITIATIVES moved to RAW_INITIATIVES below (see Initiative data model) -
+  // ini-7 stays here as it is a technical Experiment, not a business initiative.
   {
     id: 'ini-7',
     name: 'Customer Insights Dashboard',
@@ -972,10 +820,168 @@ const RAW_ESTATE_ITEMS: EstateItem[] = [
     lastUpdatedDaysAgo: 75,
     tags: ['Analytics', 'Sentiment', 'Churn'],
   },
+];
+
+// ============================================================
+// INITIATIVES
+// Business/delivery efforts, modeled separately from the technical estate
+// catalogue above per the Initiative data model.
+// ============================================================
+
+const RAW_INITIATIVES: Omit<Initiative, 'businessUnitId' | 'businessOwnerId' | 'technicalOwnerId' | 'teamId'>[] = [
+  {
+    id: 'ini-1',
+    name: 'Customer Service Transformation',
+    subtitle: 'AI transformation programme',
+    description: 'Multi-quarter initiative unifying web, voice, and WhatsApp support into a single autonomous tier backed by human escalation.',
+    department: 'Customer Services',
+    businessOwner: 'Jonathan Vance',
+    technicalOwner: 'Elena Rostova',
+    team: 'Customer Operations',
+    lifecycleStage: 'In progress',
+    status: 'In progress',
+    priority: 'Critical',
+    annualCost: 480000,
+    devCost: 300000,
+    opsCost: 180000,
+    sharedCost: 0,
+    isCostEstimated: false,
+    valueEvidenceStatus: 'In progress',
+    intendedOutcome: 'Deliver £1.2m annualized support operational savings while lifting CSAT.',
+    businessFunction: 'Strategic Service Redesign',
+    dataClassification: 'Internal',
+    lastUpdated: '02 Nov 2025',
+    lastUpdatedDaysAgo: 24,
+    tags: ['Transformation', 'Customer Care', 'Strategic'],
+  },
+  {
+    id: 'ini-2',
+    name: 'Finance Automation Programme',
+    subtitle: 'End-to-end financial close & AP automation',
+    description: 'Streamlining purchase order matching, journal entry approvals, and variance narrative generation across all group subsidiaries.',
+    department: 'Finance',
+    businessOwner: 'Rachel Green',
+    technicalOwner: 'David Chen',
+    team: 'Global Finance Centre',
+    lifecycleStage: 'In progress',
+    status: 'In progress',
+    priority: 'High',
+    annualCost: 360000,
+    devCost: 220000,
+    opsCost: 140000,
+    sharedCost: 0,
+    isCostEstimated: false,
+    valueEvidenceStatus: 'In progress',
+    intendedOutcome: 'Cut manual accounting effort by 4,000 hours annually.',
+    businessFunction: 'Finance Digitalisation',
+    dataClassification: 'Confidential',
+    lastUpdated: '28 Oct 2025',
+    lastUpdatedDaysAgo: 29,
+    tags: ['Finance', 'Automation', 'ERP'],
+  },
+  {
+    id: 'ini-3',
+    name: 'HR AI Enablement',
+    subtitle: 'Modernised employee experience and onboarding',
+    description: 'Empowers talent acquisition, employee self-service policy inquiries, and performance feedback synthesis.',
+    department: 'HR',
+    businessOwner: 'Sarah Jenkins',
+    technicalOwner: 'Sarah Lin',
+    team: 'People & Culture',
+    lifecycleStage: 'Pilot',
+    status: 'Active',
+    priority: 'Medium',
+    annualCost: 190000,
+    devCost: 120000,
+    opsCost: 70000,
+    sharedCost: 0,
+    isCostEstimated: false,
+    valueEvidenceStatus: 'Documented',
+    intendedOutcome: 'Increase employee engagement index by 8 points and shorten HR response times.',
+    businessFunction: 'Employee Lifecycle Modernisation',
+    dataClassification: 'Internal',
+    lastUpdated: '20 Oct 2025',
+    lastUpdatedDaysAgo: 37,
+    tags: ['People', 'HR', 'Experience'],
+  },
+  {
+    id: 'ini-4',
+    name: 'Enterprise Copilot Rollout',
+    subtitle: 'Scale Microsoft 365 Copilot to 3,500 knowledge workers',
+    description: 'Change management, license allocation, security governance, and value measurement for company-wide generative AI adoption.',
+    department: 'IT & Digital',
+    businessOwner: 'Jonathan Vance',
+    technicalOwner: 'Mark Taylor',
+    team: 'Digital Workplace',
+    lifecycleStage: 'Production',
+    status: 'Active',
+    priority: 'Critical',
+    annualCost: 540000,
+    devCost: 160000,
+    opsCost: 380000,
+    sharedCost: 0,
+    isCostEstimated: false,
+    valueEvidenceStatus: 'Documented',
+    intendedOutcome: 'Achieve 82% weekly active adoption and save average 3.1 hours/worker/week.',
+    businessFunction: 'Digital Workplace Strategy',
+    dataClassification: 'Internal',
+    lastUpdated: '12 Nov 2025',
+    lastUpdatedDaysAgo: 14,
+    tags: ['Copilot', 'Adoption', 'Productivity'],
+  },
+  {
+    id: 'ini-5',
+    name: 'Digital Workplace Modernisation',
+    subtitle: 'Unified enterprise service portal & autonomous IT',
+    description: 'Consolidating legacy help desks into modern automated workflows with zero-touch software provisioning.',
+    department: 'IT & Digital',
+    businessOwner: 'Mark Taylor',
+    technicalOwner: 'David Chen',
+    team: 'IT Infrastructure',
+    lifecycleStage: 'Development',
+    status: 'In progress',
+    priority: 'Medium',
+    annualCost: 320000,
+    devCost: 200000,
+    opsCost: 120000,
+    sharedCost: 0,
+    isCostEstimated: true, // Information Gap: Estimated only
+    valueEvidenceStatus: 'Planned',
+    intendedOutcome: 'Reduce IT ticket resolution cost by 40%.',
+    businessFunction: 'IT Infrastructure',
+    dataClassification: 'Internal',
+    lastUpdated: '04 Oct 2025',
+    lastUpdatedDaysAgo: 53,
+    tags: ['Workplace', 'ITSM', 'Modernisation'],
+  },
+  {
+    id: 'ini-6',
+    name: 'Supply Chain Intelligence',
+    subtitle: 'Predictive logistics & inventory balancing',
+    description: 'Machine learning forecasting warehouse stockouts, freight rate volatility, and port delay contingencies.',
+    department: 'Operations',
+    // Missing businessOwner (Information Gap)
+    technicalOwner: 'Kiran Patel',
+    team: 'Supply Chain Logistics',
+    lifecycleStage: 'Evaluation',
+    status: 'Planning',
+    priority: 'High',
+    annualCost: 275000,
+    devCost: 180000,
+    opsCost: 95000,
+    sharedCost: 0,
+    isCostEstimated: true,
+    valueEvidenceStatus: 'None',
+    intendedOutcome: 'Reduce warehouse buffer stock by 12% without increasing stockouts.',
+    businessFunction: 'Supply Chain Planning',
+    dataClassification: 'Confidential',
+    lastUpdated: '15 Jun 2025',
+    lastUpdatedDaysAgo: 164, // Information Gap: >90 days old!
+    tags: ['Supply Chain', 'Logistics', 'Forecasting'],
+  },
   {
     id: 'ini-8',
     name: 'Global Compliance & Governance AI',
-    type: 'Initiative',
     subtitle: 'Cross-border regulatory monitoring & policy audit',
     description: 'Automated policy adherence checks across EU AI Act, UK governance codes, and sector privacy mandates.',
     department: 'Other',
@@ -1468,8 +1474,15 @@ const VALUE_DATA: Record<string, ValueDataEntry> = {
   },
 };
 
-export const INITIAL_ESTATE_ITEMS: EstateItem[] = RAW_ESTATE_ITEMS.map((item) => {
-  const valueData = VALUE_DATA[item.id];
+function withDerivedData<T extends { id: string; department: string; businessOwner?: string; technicalOwner?: string; team?: string }>(
+  record: T
+): T & {
+  businessUnitId?: string;
+  businessOwnerId?: string;
+  technicalOwnerId?: string;
+  teamId?: string;
+} {
+  const valueData = VALUE_DATA[record.id];
   const valueHypothesis = valueData?.valueHypothesis
     ? {
         ...valueData.valueHypothesis,
@@ -1480,12 +1493,19 @@ export const INITIAL_ESTATE_ITEMS: EstateItem[] = RAW_ESTATE_ITEMS.map((item) =>
     : undefined;
 
   return {
-    ...item,
-    businessUnitId: DEPARTMENT_TO_BUSINESS_UNIT_ID[item.department],
+    ...record,
+    businessUnitId: DEPARTMENT_TO_BUSINESS_UNIT_ID[record.department],
+    businessOwnerId: record.businessOwner ? PERSON_NAME_TO_ID[record.businessOwner] : undefined,
+    technicalOwnerId: record.technicalOwner ? PERSON_NAME_TO_ID[record.technicalOwner] : undefined,
+    teamId: record.team ? TEAM_NAME_TO_ID[record.team] : undefined,
     ...valueData,
     ...(valueHypothesis ? { valueHypothesis } : {}),
   };
-});
+}
+
+export const INITIAL_ESTATE_ITEMS: EstateItem[] = RAW_ESTATE_ITEMS.map(withDerivedData);
+
+export const INITIAL_INITIATIVES: Initiative[] = RAW_INITIATIVES.map(withDerivedData);
 
 export const INITIAL_RELATIONSHIPS: Relationship[] = [
   // Platforms -> Agents
