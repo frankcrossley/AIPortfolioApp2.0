@@ -171,14 +171,11 @@ export const EstateMapView: React.FC = () => {
         isFullscreen ? 'fixed inset-0 z-50 bg-[#f8fafc]' : ''
       }`}
     >
-      {/* Header matching screenshot 2 */}
-      <div className="bg-white border-b border-slate-200 px-8 py-4 shrink-0">
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 px-8 py-6 shrink-0">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">AI Estate</h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Explore how your AI initiatives, platforms and agents are connected.
-            </p>
+            <h1 className="text-[28px] leading-tight font-extrabold text-slate-900 tracking-tight">AI Estate</h1>
           </div>
 
           <div className="flex items-center gap-3">

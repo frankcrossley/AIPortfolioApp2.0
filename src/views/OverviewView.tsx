@@ -30,10 +30,7 @@ export const OverviewView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-y-auto">
-      <Header
-        title="Portfolio Overview"
-        subtitle="What are we investing in, what value is it intended to create, and where does management need better information?"
-      />
+      <Header title="Portfolio Overview" />
 
       <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
         {/* Top 4 KPI Cards */}

@@ -294,10 +294,7 @@ export const PortfolioListView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-y-auto">
-      <Header
-        title="AI Portfolio"
-        subtitle="Browse and manage all AI initiatives, platforms, applications and agents."
-      />
+      <Header title="AI Portfolio" />
 
       <div className="p-8 max-w-7xl w-full mx-auto space-y-5">
         {/* Active Gap Banner if filtered by a gap */}

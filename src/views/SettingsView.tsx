@@ -20,11 +20,7 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-y-auto">
-      <Header
-        title="Configuration Portal"
-        subtitle="Business units, cost rates, benefit categories and data-quality rules that drive the rest of the platform."
-        showRegister={false}
-      />
+      <Header title="Configuration Portal" showRegister={false} />
 
       <div className="p-8 max-w-6xl w-full mx-auto space-y-6">
         <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
