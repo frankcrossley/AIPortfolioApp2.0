@@ -11,6 +11,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Every document in this app lives under /users/{uid}/... - only the
+    // signed-in account that owns {uid} may ever read or write its data.
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -19,56 +25,84 @@ service cloud.firestore {
       return request.resource.data;
     }
 
-    function existing() {
-      return resource.data;
+    function hasName(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200;
     }
 
     function isValidEstateItem(data) {
       return data.id is string && data.id.size() <= 128 &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
-             data.type in ['Platform', 'Application', 'Agent', 'Initiative', 'Embedded AI', 'Experiment'] &&
+             hasName(data) &&
+             data.type in ['Platform', 'Application', 'Agent', 'Initiative', 'Embedded AI', 'Experiment', 'Other'] &&
              data.lifecycleStage in ['Ideation', 'Evaluation', 'Development', 'Pilot', 'Production', 'In progress', 'Retired'] &&
              data.status in ['Active', 'In progress', 'Planning', 'Under Review', 'On hold', 'Retired'] &&
-             data.priority in ['Critical', 'High', 'Medium', 'Low'] &&
-             data.department is string && data.department.size() <= 100 &&
-             (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 300)) &&
-             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
-             (!('businessOwner' in data) || (data.businessOwner is string && data.businessOwner.size() <= 150)) &&
-             (!('technicalOwner' in data) || (data.technicalOwner is string && data.technicalOwner.size() <= 150)) &&
-             (!('provider' in data) || (data.provider is string && data.provider.size() <= 150)) &&
-             (!('annualCost' in data) || (data.annualCost is number && data.annualCost >= 0)) &&
-             (!('devCost' in data) || (data.devCost is number && data.devCost >= 0)) &&
-             (!('opsCost' in data) || (data.opsCost is number && data.opsCost >= 0)) &&
-             (!('sharedCost' in data) || (data.sharedCost is number && data.sharedCost >= 0)) &&
-             (!('isCostEstimated' in data) || data.isCostEstimated is bool) &&
-             (!('intendedOutcome' in data) || (data.intendedOutcome is string && data.intendedOutcome.size() <= 2000)) &&
-             (!('businessFunction' in data) || (data.businessFunction is string && data.businessFunction.size() <= 200)) &&
-             (!('dataClassification' in data) || data.dataClassification in ['Public', 'Internal', 'Confidential', 'Restricted']) &&
-             (!('valueEvidenceStatus' in data) || data.valueEvidenceStatus in ['Available', 'Documented', 'In progress', 'None', 'Planned']);
+             data.department is string && data.department.size() <= 100;
     }
 
     function isValidRelationship(data) {
       return data.id is string && data.id.size() <= 128 &&
              data.sourceId is string && data.sourceId.size() <= 128 &&
              data.targetId is string && data.targetId.size() <= 128 &&
-             data.type in ['Built on', 'Uses', 'Part of', 'Depends on', 'Delivered through', 'Owned by', 'Data flow'] &&
-             (!('label' in data) || (data.label is string && data.label.size() <= 200));
+             data.type in ['Built on', 'Uses', 'Part of', 'Depends on', 'Delivered through', 'Owned by', 'Data flow'];
     }
 
-    // Estate Items collection
-    match /estateItems/{itemId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(itemId) && isValidEstateItem(incoming());
-      allow update: if isSignedIn() && isValidId(itemId) && isValidEstateItem(incoming());
-      allow delete: if isSignedIn() && isValidId(itemId);
-    }
+    match /users/{uid} {
+      // Estate items: agents, applications, platforms, embedded AI, experiments
+      match /estateItems/{itemId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidId(itemId) && isValidEstateItem(incoming());
+        allow delete: if isOwner(uid) && isValidId(itemId);
+      }
 
-    // Relationships collection
-    match /relationships/{relId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(relId) && isValidRelationship(incoming());
-      allow update: if isSignedIn() && isValidId(relId) && isValidRelationship(incoming());
-      allow delete: if isSignedIn() && isValidId(relId);
+      // Initiatives: business/delivery efforts, modeled separately from estate items
+      match /initiatives/{itemId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidId(itemId) && hasName(incoming());
+        allow delete: if isOwner(uid) && isValidId(itemId);
+      }
+
+      // Relationships between estate items / initiatives
+      match /relationships/{relId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidId(relId) && isValidRelationship(incoming());
+        allow delete: if isOwner(uid) && isValidId(relId);
+      }
+
+      // Configuration Portal master data
+      match /businessUnits/{docId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOwner(uid) && isValidId(docId);
+      }
+
+      match /resourceRates/{docId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidId(docId);
+        allow delete: if isOwner(uid) && isValidId(docId);
+      }
+
+      match /benefitCategories/{docId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOwner(uid) && isValidId(docId);
+      }
+
+      match /strategicObjectives/{docId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOwner(uid) && isValidId(docId);
+      }
+
+      match /people/{docId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOwner(uid) && isValidId(docId);
+      }
+
+      match /teams/{docId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOwner(uid) && isValidId(docId);
+      }
     }
   }
 }

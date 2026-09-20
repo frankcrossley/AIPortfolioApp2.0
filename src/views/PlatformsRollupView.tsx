@@ -32,7 +32,7 @@ export const PlatformsRollupView: React.FC = () => {
   }, [items]);
 
   // Target selected platform
-  const currentPlatformId = selectedPlatformId || platforms[0]?.id || 'plt-2';
+  const currentPlatformId = selectedPlatformId || platforms[0]?.id;
   const selectedPlatform = items.find((i) => i.id === currentPlatformId) || platforms[0];
 
   // Connected items to this platform
@@ -108,6 +108,13 @@ export const PlatformsRollupView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
+                  {platforms.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-slate-400">
+                        No platforms recorded yet. Add one to get started.
+                      </td>
+                    </tr>
+                  )}
                   {platforms.map((platform) => {
                     const isSelected = selectedPlatform?.id === platform.id;
                     const count = items.filter(

@@ -20,7 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import { ActiveNav } from '../types';
 
 export const Sidebar: React.FC = () => {
-  const { activeNav, setActiveNav, metrics, isSyncing, isCloudSynced, seedInitialDataToCloud } = usePortfolio();
+  const { activeNav, setActiveNav, metrics, isSyncing, isCloudSynced } = usePortfolio();
   const { user, signInWithGoogle, signOut, loading: authLoading } = useAuth();
 
   const navItems: {
@@ -109,19 +109,11 @@ export const Sidebar: React.FC = () => {
               ? 'Syncing...'
               : user
               ? isCloudSynced
-                ? 'Firestore Connected'
-                : 'Cloud Ready'
-              : 'Local Mode'}
+                ? 'Account Connected'
+                : 'Connecting...'
+              : 'Not signed in'}
           </span>
         </div>
-        {user && !isCloudSynced && (
-          <button
-            onClick={() => seedInitialDataToCloud()}
-            className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold underline"
-          >
-            Push to DB
-          </button>
-        )}
       </div>
 
       {/* Main Navigation */}
