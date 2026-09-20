@@ -17,11 +17,13 @@ import {
 } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { useAuth } from '../context/AuthContext';
+import { useOrg } from '../context/OrgContext';
 import { ActiveNav } from '../types';
 
 export const Sidebar: React.FC = () => {
   const { activeNav, setActiveNav, metrics, isSyncing, isCloudSynced } = usePortfolio();
   const { user, signInWithGoogle, signOut, loading: authLoading } = useAuth();
+  const { organization } = useOrg();
 
   const navItems: {
     id: ActiveNav;
@@ -88,8 +90,8 @@ export const Sidebar: React.FC = () => {
               v1.2
             </span>
           </div>
-          <div className="text-[11px] text-slate-400 leading-none mt-1">
-            AI Estate • Investment • Outcomes
+          <div className="text-[11px] text-slate-400 leading-none mt-1 truncate max-w-[185px]">
+            {organization ? organization.name : 'AI Estate • Investment • Outcomes'}
           </div>
         </div>
       </div>

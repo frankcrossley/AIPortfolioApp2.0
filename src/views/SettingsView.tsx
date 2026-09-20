@@ -1,11 +1,29 @@
 import React, { useState } from 'react';
-import { Plus, Pencil, Check, X, Building2, Coins, Tags, ListTree, ClipboardCheck, Users, UsersRound } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Check,
+  X,
+  Building2,
+  Coins,
+  Tags,
+  ListTree,
+  ClipboardCheck,
+  Users,
+  UsersRound,
+  Landmark,
+  Copy,
+  RefreshCw,
+} from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
+import { useOrg } from '../context/OrgContext';
+import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
-import { BusinessUnit, ResourceRate, BenefitCategoryConfig, StrategicObjectiveConfig, Person, Team } from '../types';
+import { BusinessUnit, ResourceRate, BenefitCategoryConfig, StrategicObjectiveConfig, Person, Team, OrgRole } from '../types';
 import { AI_TYPES, LIFECYCLE_STAGES, ITEM_STATUSES, CONFIDENCE_LEVELS } from '../data/configData';
 
 type SettingsTab =
+  | 'organization'
   | 'business-units'
   | 'people'
   | 'teams'
@@ -15,6 +33,7 @@ type SettingsTab =
   | 'required-fields';
 
 const TABS: { id: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'organization', label: 'Organization', icon: Landmark },
   { id: 'business-units', label: 'Business Units', icon: Building2 },
   { id: 'people', label: 'People', icon: Users },
   { id: 'teams', label: 'Teams', icon: UsersRound },
@@ -25,7 +44,7 @@ const TABS: { id: SettingsTab; label: string; icon: React.ComponentType<{ classN
 ];
 
 export const SettingsView: React.FC = () => {
-  const [tab, setTab] = useState<SettingsTab>('business-units');
+  const [tab, setTab] = useState<SettingsTab>('organization');
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-y-auto">
@@ -50,6 +69,7 @@ export const SettingsView: React.FC = () => {
           })}
         </div>
 
+        {tab === 'organization' && <OrganizationTab />}
         {tab === 'business-units' && <BusinessUnitsTab />}
         {tab === 'people' && <PeopleTab />}
         {tab === 'teams' && <TeamsTab />}
@@ -92,6 +112,198 @@ const StatusToggle: React.FC<{ status: 'Active' | 'Inactive'; onToggle: () => vo
     {status}
   </button>
 );
+
+// ============================================================
+// ORGANIZATION
+// ============================================================
+
+const OrganizationTab: React.FC = () => {
+  const { user } = useAuth();
+  const {
+    organization,
+    role,
+    members,
+    error,
+    regenerateJoinCode,
+    updateOrganizationName,
+    updateMemberRole,
+    removeMember,
+    leaveOrganization,
+  } = useOrg();
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(organization?.name || '');
+  const [copied, setCopied] = useState(false);
+
+  if (!organization) {
+    return (
+      <div className="p-6 bg-white rounded-xl border border-slate-200/80 text-xs text-slate-500 text-center">
+        Sign in to create or join an organization. In local mode, data isn't shared with anyone.
+      </div>
+    );
+  }
+
+  const isAdmin = role === 'admin';
+  const adminCount = members.filter((m) => m.role === 'admin').length;
+
+  const handleCopyInvite = () => {
+    navigator.clipboard?.writeText(`Organization ID: ${organization.id}\nJoin code: ${organization.joinCode}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card title="Organization" subtitle="Everyone in your organization shares this AI portfolio - it isn't split up per person.">
+        <div className="p-5 space-y-4 text-xs">
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Name</label>
+            {isEditingName ? (
+              <div className="flex items-center gap-2 max-w-sm">
+                <input
+                  autoFocus
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  className="flex-1 px-2.5 py-1.5 border border-slate-200 rounded text-xs"
+                />
+                <button
+                  onClick={() => {
+                    updateOrganizationName(nameDraft);
+                    setIsEditingName(false);
+                  }}
+                  className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    setNameDraft(organization.name);
+                    setIsEditingName(false);
+                  }}
+                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-900">{organization.name}</span>
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      setNameDraft(organization.name);
+                      setIsEditingName(true);
+                    }}
+                    className="text-blue-600 hover:underline text-[11px] font-medium"
+                  >
+                    Rename
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-100">
+            <div>
+              <span className="text-slate-400 block mb-0.5">Organization ID</span>
+              <span className="font-mono text-slate-700 text-[11px]">{organization.id}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 block mb-0.5">Join code</span>
+              <span className="font-mono font-bold text-slate-900">
+                {isAdmin ? organization.joinCode : '••••-••••'}
+              </span>
+            </div>
+          </div>
+
+          {isAdmin && (
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                onClick={handleCopyInvite}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                {copied ? 'Copied!' : 'Copy invite details'}
+              </button>
+              <button
+                onClick={() => regenerateJoinCode()}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Regenerate join code
+              </button>
+            </div>
+          )}
+          <p className="text-[11px] text-slate-400 pt-1">
+            Share the organization ID and join code with a teammate - they can enter both when they first sign in to join this workspace.
+          </p>
+        </div>
+      </Card>
+
+      <Card title="Members" subtitle={`${members.length} ${members.length === 1 ? 'person has' : 'people have'} access to this organization.`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-slate-600">
+            <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              <tr>
+                <th className="py-3 px-4">Member</th>
+                <th className="py-3 px-3">Email</th>
+                <th className="py-3 px-3">Role</th>
+                <th className="py-3 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {members.map((m) => {
+                const isSelf = m.uid === user?.uid;
+                const isOnlyAdmin = m.role === 'admin' && adminCount <= 1;
+                return (
+                  <tr key={m.uid} className="hover:bg-slate-50/60">
+                    <td className="py-2.5 px-4 font-semibold text-slate-900">
+                      {m.displayName || m.email || m.uid}
+                      {isSelf && <span className="text-slate-400 font-normal"> (you)</span>}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-600">{m.email || '—'}</td>
+                    <td className="py-2.5 px-3">
+                      {isAdmin && !isOnlyAdmin ? (
+                        <select
+                          value={m.role}
+                          onChange={(e) => updateMemberRole(m.uid, e.target.value as OrgRole)}
+                          className="px-2 py-1 border border-slate-200 rounded text-[11px] bg-white"
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="member">Member</option>
+                        </select>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                          {m.role === 'admin' ? 'Admin' : 'Member'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-4 text-right">
+                      {isAdmin && !isSelf && (
+                        <button onClick={() => removeMember(m.uid)} className="text-rose-600 hover:underline text-[11px] font-semibold">
+                          Remove
+                        </button>
+                      )}
+                      {isSelf && !isOnlyAdmin && (
+                        <button onClick={() => leaveOrganization()} className="text-rose-600 hover:underline text-[11px] font-semibold">
+                          Leave organization
+                        </button>
+                      )}
+                      {isSelf && isOnlyAdmin && (
+                        <span className="text-[11px] text-slate-400">Only admin - add another admin before leaving</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {error && <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-700">{error}</div>}
+    </div>
+  );
+};
 
 // ============================================================
 // BUSINESS UNITS

@@ -11,18 +11,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Every document in this app lives under /users/{uid}/... - only the
-    // signed-in account that owns {uid} may ever read or write its data.
-    function isOwner(uid) {
-      return isSignedIn() && request.auth.uid == uid;
+    function incoming() {
+      return request.resource.data;
     }
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
     }
 
     function hasName(data) {
@@ -45,63 +39,132 @@ service cloud.firestore {
              data.type in ['Built on', 'Uses', 'Part of', 'Depends on', 'Delivered through', 'Owned by', 'Data flow'];
     }
 
-    match /users/{uid} {
+    // The app is multi-tenant: one shared portfolio per organization, not
+    // one silo per individual user. Which organization (and role) a
+    // signed-in account has is resolved from its own reverse-lookup
+    // document below, keyed by uid - never trust a client-supplied orgId
+    // without checking it against this.
+    function memberOrgId() {
+      return get(/databases/$(database)/documents/orgMembers/$(request.auth.uid)).data.orgId;
+    }
+
+    function memberRole() {
+      return get(/databases/$(database)/documents/orgMembers/$(request.auth.uid)).data.role;
+    }
+
+    function isOrgMember(orgId) {
+      return isSignedIn() && memberOrgId() == orgId;
+    }
+
+    function isOrgAdmin(orgId) {
+      return isOrgMember(orgId) && memberRole() == 'admin';
+    }
+
+    // ------------------------------------------------------------
+    // Reverse lookup: which org + role does this uid have.
+    // ------------------------------------------------------------
+    match /orgMembers/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+
+      // Creating your OWN membership is only valid in exactly two cases:
+      // (a) you're the admin of an organization you just created (its
+      //     createdBy already points at you), or
+      // (b) you're joining an existing org whose current join code you
+      //     supplied correctly.
+      allow create: if isSignedIn() && request.auth.uid == uid &&
+        incoming().uid == uid && isValidId(incoming().orgId) &&
+        (
+          (incoming().role == 'admin' &&
+            get(/databases/$(database)/documents/orgs/$(incoming().orgId)).data.createdBy == request.auth.uid)
+          ||
+          (incoming().role == 'member' &&
+            incoming().joinCodeUsed == get(/databases/$(database)/documents/orgs/$(incoming().orgId)).data.joinCode)
+        );
+
+      // Only an org admin can change someone's role (and can't smuggle in
+      // a different org/uid via the same call). Anyone can delete their
+      // own membership (leaving); an admin can remove anyone in their org.
+      allow update: if isOrgAdmin(resource.data.orgId) &&
+        incoming().orgId == resource.data.orgId && incoming().uid == resource.data.uid;
+      allow delete: if isSignedIn() && (request.auth.uid == uid || isOrgAdmin(resource.data.orgId));
+    }
+
+    // ------------------------------------------------------------
+    // Organizations
+    // ------------------------------------------------------------
+    match /orgs/{orgId} {
+      allow read: if isOrgMember(orgId);
+      allow create: if isSignedIn() && isValidId(orgId) && incoming().id == orgId &&
+        incoming().createdBy == request.auth.uid && hasName(incoming()) && incoming().joinCode is string;
+      allow update: if isOrgAdmin(orgId) &&
+        incoming().id == resource.data.id && incoming().createdBy == resource.data.createdBy;
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow read: if isOrgMember(orgId);
+        allow create: if (isOrgAdmin(orgId) || (isSignedIn() && request.auth.uid == uid)) &&
+          isOrgMember(orgId) && incoming().uid == uid && incoming().orgId == orgId;
+        allow update: if isOrgAdmin(orgId) &&
+          incoming().uid == resource.data.uid && incoming().orgId == resource.data.orgId;
+        allow delete: if isOrgAdmin(orgId) || (isSignedIn() && request.auth.uid == uid);
+      }
+
       // Estate items: agents, applications, platforms, embedded AI, experiments
       match /estateItems/{itemId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid) && isValidId(itemId) && isValidEstateItem(incoming());
-        allow delete: if isOwner(uid) && isValidId(itemId);
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isValidId(itemId) && isValidEstateItem(incoming());
+        allow delete: if isOrgMember(orgId) && isValidId(itemId);
       }
 
       // Initiatives: business/delivery efforts, modeled separately from estate items
       match /initiatives/{itemId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid) && isValidId(itemId) && hasName(incoming());
-        allow delete: if isOwner(uid) && isValidId(itemId);
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isValidId(itemId) && hasName(incoming());
+        allow delete: if isOrgMember(orgId) && isValidId(itemId);
       }
 
       // Relationships between estate items / initiatives
       match /relationships/{relId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid) && isValidId(relId) && isValidRelationship(incoming());
-        allow delete: if isOwner(uid) && isValidId(relId);
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isValidId(relId) && isValidRelationship(incoming());
+        allow delete: if isOrgMember(orgId) && isValidId(relId);
       }
 
       // Configuration Portal master data
       match /businessUnits/{docId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
-        allow delete: if isOwner(uid) && isValidId(docId);
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOrgMember(orgId) && isValidId(docId);
       }
 
       match /resourceRates/{docId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid) && isValidId(docId);
-        allow delete: if isOwner(uid) && isValidId(docId);
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isValidId(docId);
+        allow delete: if isOrgMember(orgId) && isValidId(docId);
       }
 
       match /benefitCategories/{docId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
-        allow delete: if isOwner(uid) && isValidId(docId);
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOrgMember(orgId) && isValidId(docId);
       }
 
       match /strategicObjectives/{docId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
-        allow delete: if isOwner(uid) && isValidId(docId);
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOrgMember(orgId) && isValidId(docId);
       }
 
       match /people/{docId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
-        allow delete: if isOwner(uid) && isValidId(docId);
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOrgMember(orgId) && isValidId(docId);
       }
 
       match /teams/{docId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid) && isValidId(docId) && hasName(incoming());
-        allow delete: if isOwner(uid) && isValidId(docId);
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isValidId(docId) && hasName(incoming());
+        allow delete: if isOrgMember(orgId) && isValidId(docId);
       }
     }
   }

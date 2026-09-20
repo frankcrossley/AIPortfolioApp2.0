@@ -360,3 +360,32 @@ export interface Initiative
   > {
   relatedEstateItemIds?: string[];
 }
+
+// ============================================================
+// ORGANIZATIONS
+// The app is multi-tenant: one shared portfolio per company, not per
+// individual user. Every estate item, initiative, and piece of
+// configuration master data lives under orgs/{orgId}/... in Firestore,
+// so every member of an organization sees the same data. Which
+// organization a signed-in user belongs to is resolved via their
+// OrgMember record (orgMembers/{uid}, keyed by their own uid).
+// ============================================================
+
+export type OrgRole = 'admin' | 'member';
+
+export interface Organization {
+  id: string;
+  name: string;
+  createdBy: string; // uid of the user who created it
+  joinCode: string; // shared secret; regenerable by an admin, used to self-join
+  createdAt: string;
+}
+
+export interface OrgMember {
+  uid: string;
+  orgId: string;
+  role: OrgRole;
+  email?: string;
+  displayName?: string;
+  joinedAt: string;
+}

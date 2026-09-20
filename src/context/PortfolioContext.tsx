@@ -20,6 +20,7 @@ import { INITIAL_REQUIRED_FIELDS } from '../data/configData';
 import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../lib/firebase';
 import { isQuantified, isValidatedStatus } from '../lib/valueCalculations';
 import { useAuth } from './AuthContext';
+import { useOrg } from './OrgContext';
 
 interface ToastState {
   id: string;
@@ -159,6 +160,8 @@ const PortfolioContext = createContext<PortfolioContextType | undefined>(undefin
 
 export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const { organization } = useOrg();
+  const orgId = organization?.id;
   // Every collection below starts empty - there is no seeded/demo content.
   // When signed in, these are populated exclusively from that account's own
   // data in Firestore (see the sync effect below); when signed out, they
@@ -178,7 +181,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCloudSynced, setIsCloudSynced] = useState(false);
 
-  // Configuration Portal state - synced to Firestore under this account
+  // Configuration Portal state - synced to Firestore under this organization
   // once signed in (see sync effect below); local-only fallback otherwise.
   const [businessUnits, setBusinessUnits] = useState<BusinessUnit[]>([]);
   const [resourceRates, setResourceRates] = useState<ResourceRate[]>([]);
@@ -232,16 +235,18 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setIsInitiativeDrawerOpen(false);
   };
 
-  // Per-account Firestore paths - every collection lives under
-  // users/{uid}/<name>, so one account can never see another's data.
-  const userCollection = (name: string) => collection(db, 'users', user!.uid, name);
-  const userDocRef = (name: string, id: string) => doc(db, 'users', user!.uid, name, id);
+  // Per-organization Firestore paths - every collection lives under
+  // orgs/{orgId}/<name>, so everyone in the same organization shares one
+  // portfolio, and no other organization's data is ever visible.
+  const orgCollection = (name: string) => collection(db, 'orgs', orgId!, name);
+  const orgDocRef = (name: string, id: string) => doc(db, 'orgs', orgId!, name, id);
 
-  // Synchronize every collection with this account's own Firestore data.
-  // Signed out (or no account yet): everything starts and stays empty -
-  // there is no seeded/demo content and no other account's data leaks in.
+  // Synchronize every collection with this organization's Firestore data.
+  // Signed out, or signed in but not yet part of an organization: everything
+  // starts and stays empty - there is no seeded/demo content and no other
+  // organization's data leaks in.
   useEffect(() => {
-    if (!user) {
+    if (!user || !orgId) {
       setItems([]);
       setInitiatives([]);
       setRelationships([]);
@@ -260,7 +265,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const subscribe = <T,>(name: string, setState: React.Dispatch<React.SetStateAction<T[]>>) =>
       onSnapshot(
-        userCollection(name),
+        orgCollection(name),
         (snapshot) => setState(snapshot.docs.map((d) => d.data() as T)),
         (error) => {
           const message = handleFirestoreError(error, OperationType.GET, name);
@@ -285,12 +290,12 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     return () => unsubscribers.forEach((unsub) => unsub());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, orgId]);
 
   /**
    * Shared CRUD for the simple "master data" collections (business units,
    * resource rates, benefit categories, strategic objectives, people,
-   * teams): write straight to this account's Firestore when signed in
+   * teams): write straight to this organization's Firestore when signed in and part of one
    * (the sync effect above reflects the change back), otherwise fall back
    * to local-only state so the app still works while signed out.
    */
@@ -301,8 +306,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   ) {
     const add = (data: Omit<T, 'id'>): T => {
       const record = { ...data, id: `${idPrefix}-${Date.now()}` } as T;
-      if (user) {
-        setDoc(userDocRef(name, record.id), cleanFirestoreData(record as Record<string, unknown>)).catch((err) => {
+      if (user && orgId) {
+        setDoc(orgDocRef(name, record.id), cleanFirestoreData(record as Record<string, unknown>)).catch((err) => {
           const message = handleFirestoreError(err, OperationType.CREATE, `${name}/${record.id}`);
           showToast(message, 'warning');
         });
@@ -313,8 +318,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     const update = (id: string, updates: Partial<T>) => {
-      if (user) {
-        setDoc(userDocRef(name, id), cleanFirestoreData(updates as Record<string, unknown>), { merge: true }).catch(
+      if (user && orgId) {
+        setDoc(orgDocRef(name, id), cleanFirestoreData(updates as Record<string, unknown>), { merge: true }).catch(
           (err) => {
             const message = handleFirestoreError(err, OperationType.UPDATE, `${name}/${id}`);
             showToast(message, 'warning');
@@ -395,16 +400,16 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       lastUpdatedDaysAgo: 0,
     };
 
-    if (user) {
+    if (user && orgId) {
       try {
-        await setDoc(userDocRef('estateItems', newId), cleanFirestoreData(newItem));
+        await setDoc(orgDocRef('estateItems', newId), cleanFirestoreData(newItem));
 
         if (relationshipsList && relationshipsList.length > 0) {
           for (let idx = 0; idx < relationshipsList.length; idx++) {
             const rel = relationshipsList[idx];
             const relId = `rel-${Date.now()}-${idx}`;
             await setDoc(
-              userDocRef('relationships', relId),
+              orgDocRef('relationships', relId),
               cleanFirestoreData({
                 id: relId,
                 sourceId: newId,
@@ -458,9 +463,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       lastUpdatedDaysAgo: 0,
     };
 
-    if (user) {
+    if (user && orgId) {
       try {
-        await setDoc(userDocRef('estateItems', id), cleanFirestoreData(updated), { merge: true });
+        await setDoc(orgDocRef('estateItems', id), cleanFirestoreData(updated), { merge: true });
         showToast('Changes saved');
       } catch (err) {
         const message = handleFirestoreError(err, OperationType.UPDATE, `estateItems/${id}`);
@@ -490,9 +495,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     const item = items.find((i) => i.id === id);
-    if (user) {
+    if (user && orgId) {
       try {
-        await deleteDoc(userDocRef('estateItems', id));
+        await deleteDoc(orgDocRef('estateItems', id));
         showToast(`Deleted ${item?.name || 'item'}`);
       } catch (err) {
         const message = handleFirestoreError(err, OperationType.DELETE, `estateItems/${id}`);
@@ -519,9 +524,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       lastUpdatedDaysAgo: 0,
     };
 
-    if (user) {
+    if (user && orgId) {
       try {
-        await setDoc(userDocRef('initiatives', newId), cleanFirestoreData(newInitiative));
+        await setDoc(orgDocRef('initiatives', newId), cleanFirestoreData(newInitiative));
         showToast(`Saved "${newInitiative.name}" to your AI Portfolio`);
       } catch (err) {
         const message = handleFirestoreError(err, OperationType.CREATE, `initiatives/${newId}`);
@@ -540,9 +545,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const existing = initiatives.find((i) => i.id === id);
     const updated = { ...(existing || {}), ...updates, lastUpdated: 'Today', lastUpdatedDaysAgo: 0 };
 
-    if (user) {
+    if (user && orgId) {
       try {
-        await setDoc(userDocRef('initiatives', id), cleanFirestoreData(updated), { merge: true });
+        await setDoc(orgDocRef('initiatives', id), cleanFirestoreData(updated), { merge: true });
         showToast('Changes saved');
       } catch (err) {
         const message = handleFirestoreError(err, OperationType.UPDATE, `initiatives/${id}`);
@@ -559,9 +564,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const deleteInitiative = async (id: string) => {
     const initiative = initiatives.find((i) => i.id === id);
 
-    if (user) {
+    if (user && orgId) {
       try {
-        await deleteDoc(userDocRef('initiatives', id));
+        await deleteDoc(orgDocRef('initiatives', id));
         showToast(`Deleted ${initiative?.name || 'initiative'}`);
       } catch (err) {
         const message = handleFirestoreError(err, OperationType.DELETE, `initiatives/${id}`);
