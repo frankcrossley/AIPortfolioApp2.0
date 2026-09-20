@@ -262,7 +262,10 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       onSnapshot(
         userCollection(name),
         (snapshot) => setState(snapshot.docs.map((d) => d.data() as T)),
-        (error) => handleFirestoreError(error, OperationType.GET, name)
+        (error) => {
+          const message = handleFirestoreError(error, OperationType.GET, name);
+          showToast(`${message} (${name})`, 'warning');
+        }
       );
 
     const unsubscribers = [
@@ -299,9 +302,10 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const add = (data: Omit<T, 'id'>): T => {
       const record = { ...data, id: `${idPrefix}-${Date.now()}` } as T;
       if (user) {
-        setDoc(userDocRef(name, record.id), cleanFirestoreData(record as Record<string, unknown>)).catch((err) =>
-          handleFirestoreError(err, OperationType.CREATE, `${name}/${record.id}`)
-        );
+        setDoc(userDocRef(name, record.id), cleanFirestoreData(record as Record<string, unknown>)).catch((err) => {
+          const message = handleFirestoreError(err, OperationType.CREATE, `${name}/${record.id}`);
+          showToast(message, 'warning');
+        });
       } else {
         setState((prev) => [...prev, record]);
       }
@@ -311,7 +315,10 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const update = (id: string, updates: Partial<T>) => {
       if (user) {
         setDoc(userDocRef(name, id), cleanFirestoreData(updates as Record<string, unknown>), { merge: true }).catch(
-          (err) => handleFirestoreError(err, OperationType.UPDATE, `${name}/${id}`)
+          (err) => {
+            const message = handleFirestoreError(err, OperationType.UPDATE, `${name}/${id}`);
+            showToast(message, 'warning');
+          }
         );
       } else {
         setState((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
@@ -411,7 +418,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
         showToast(`Saved "${newItem.name}" to your AI Portfolio`);
       } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `estateItems/${newId}`);
+        const message = handleFirestoreError(err, OperationType.CREATE, `estateItems/${newId}`);
+        showToast(message, 'warning');
+        return; // keep the drawer open so the user's input isn't lost
       }
     } else {
       // Local fallback
@@ -454,7 +463,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         await setDoc(userDocRef('estateItems', id), cleanFirestoreData(updated), { merge: true });
         showToast('Changes saved');
       } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `estateItems/${id}`);
+        const message = handleFirestoreError(err, OperationType.UPDATE, `estateItems/${id}`);
+        showToast(message, 'warning');
       }
     } else {
       setItems((prev) =>
@@ -485,7 +495,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         await deleteDoc(userDocRef('estateItems', id));
         showToast(`Deleted ${item?.name || 'item'}`);
       } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `estateItems/${id}`);
+        const message = handleFirestoreError(err, OperationType.DELETE, `estateItems/${id}`);
+        showToast(message, 'warning');
+        return;
       }
     } else {
       setItems((prev) => prev.filter((i) => i.id !== id));
@@ -512,7 +524,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         await setDoc(userDocRef('initiatives', newId), cleanFirestoreData(newInitiative));
         showToast(`Saved "${newInitiative.name}" to your AI Portfolio`);
       } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `initiatives/${newId}`);
+        const message = handleFirestoreError(err, OperationType.CREATE, `initiatives/${newId}`);
+        showToast(message, 'warning');
+        return; // keep the drawer open so the user's input isn't lost
       }
     } else {
       setInitiatives((prev) => [newInitiative, ...prev]);
@@ -531,7 +545,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         await setDoc(userDocRef('initiatives', id), cleanFirestoreData(updated), { merge: true });
         showToast('Changes saved');
       } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `initiatives/${id}`);
+        const message = handleFirestoreError(err, OperationType.UPDATE, `initiatives/${id}`);
+        showToast(message, 'warning');
       }
     } else {
       setInitiatives((prev) =>
@@ -549,7 +564,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         await deleteDoc(userDocRef('initiatives', id));
         showToast(`Deleted ${initiative?.name || 'initiative'}`);
       } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `initiatives/${id}`);
+        const message = handleFirestoreError(err, OperationType.DELETE, `initiatives/${id}`);
+        showToast(message, 'warning');
+        return;
       }
     } else {
       setInitiatives((prev) => prev.filter((i) => i.id !== id));

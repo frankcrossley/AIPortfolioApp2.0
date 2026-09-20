@@ -34,7 +34,19 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+/**
+ * Logs a structured diagnostic for a failed Firestore call and returns a
+ * short, user-facing message. Deliberately does NOT throw: every call site
+ * in this app fires Firestore writes without awaiting/catching further
+ * (so the UI doesn't block on network round-trips), which meant a thrown
+ * error here became a silent, unhandled promise rejection - the write
+ * would fail with no toast, no console signal a user would notice, and no
+ * indication anything was wrong. The most common real-world cause is a
+ * permission-denied response because the deployed Firestore security
+ * rules don't yet match the paths the app writes to (e.g. after a data
+ * model change) - see the "permission-denied" case below.
+ */
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): string {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -53,7 +65,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path,
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+
+  const code = (error as { code?: string })?.code;
+  if (code === 'permission-denied') {
+    return 'Permission denied - your account may not have access to save this yet, or the security rules need updating.';
+  }
+  if (code === 'unavailable') {
+    return "Couldn't reach the server - check your connection and try again.";
+  }
+  return "Couldn't save this change to your account.";
 }
 
 // Connection test
