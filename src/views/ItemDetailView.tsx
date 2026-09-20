@@ -95,8 +95,7 @@ export const ItemDetailView: React.FC<ItemDetailViewProps> = ({ itemId }) => {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // Find target item (may be an Estate Item or an Initiative adapted for display)
-  const item: EstateItem | undefined =
-    allRecords.find((i) => i.id === itemId) || allRecords.find((i) => i.id === 'agt-1') || allRecords[0];
+  const item: EstateItem | undefined = allRecords.find((i) => i.id === itemId) || allRecords[0];
 
   const recommendedActions = item ? getRecommendedActions(item) : [];
   const completeness = item ? getCompleteness(item) : null;

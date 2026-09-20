@@ -26,7 +26,7 @@ export const EstateMapView: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeGrouping, setActiveGrouping] = useState<'Technology' | 'Ownership' | 'Lifecycle'>('Technology');
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>('agt-1'); // Default select Customer Support Agent
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedFilterCategory, setSelectedFilterCategory] = useState<string>('All');
   const [departmentFilter, setDepartmentFilter] = useState<string>('');
   const [lifecycleFilter, setLifecycleFilter] = useState<string>('');

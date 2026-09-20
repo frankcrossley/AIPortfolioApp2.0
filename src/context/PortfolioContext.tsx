@@ -1,13 +1,5 @@
 import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  setDoc,
-  deleteDoc,
-  writeBatch,
-  getDocs,
-} from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
 import {
   EstateItem,
   Relationship,
@@ -24,16 +16,7 @@ import {
   Person,
   Team,
 } from '../types';
-import { INITIAL_ESTATE_ITEMS, INITIAL_INITIATIVES, INITIAL_RELATIONSHIPS } from '../data/mockData';
-import {
-  INITIAL_BUSINESS_UNITS,
-  INITIAL_RESOURCE_RATES,
-  INITIAL_BENEFIT_CATEGORIES,
-  INITIAL_STRATEGIC_OBJECTIVES,
-  INITIAL_REQUIRED_FIELDS,
-  INITIAL_PEOPLE,
-  INITIAL_TEAMS,
-} from '../data/configData';
+import { INITIAL_REQUIRED_FIELDS } from '../data/configData';
 import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../lib/firebase';
 import { isQuantified, isValidatedStatus } from '../lib/valueCalculations';
 import { useAuth } from './AuthContext';
@@ -78,10 +61,9 @@ interface PortfolioContextType {
   ) => Promise<void>;
   updateItem: (id: string, updates: Partial<EstateItem>) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
-  addInitiative: (initiativeData: Omit<Initiative, 'id' | 'lastUpdated' | 'lastUpdatedDaysAgo'>) => void;
-  updateInitiative: (id: string, updates: Partial<Initiative>) => void;
-  deleteInitiative: (id: string) => void;
-  seedInitialDataToCloud: () => Promise<void>;
+  addInitiative: (initiativeData: Omit<Initiative, 'id' | 'lastUpdated' | 'lastUpdatedDaysAgo'>) => Promise<void>;
+  updateInitiative: (id: string, updates: Partial<Initiative>) => Promise<void>;
+  deleteInitiative: (id: string) => Promise<void>;
   isSyncing: boolean;
   isCloudSynced: boolean;
   toasts: ToastState[];
@@ -177,12 +159,16 @@ const PortfolioContext = createContext<PortfolioContextType | undefined>(undefin
 
 export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [items, setItems] = useState<EstateItem[]>(INITIAL_ESTATE_ITEMS);
-  const [initiatives, setInitiatives] = useState<Initiative[]>(INITIAL_INITIATIVES);
-  const [relationships, setRelationships] = useState<Relationship[]>(INITIAL_RELATIONSHIPS);
+  // Every collection below starts empty - there is no seeded/demo content.
+  // When signed in, these are populated exclusively from that account's own
+  // data in Firestore (see the sync effect below); when signed out, they
+  // hold only what's been added locally during this session.
+  const [items, setItems] = useState<EstateItem[]>([]);
+  const [initiatives, setInitiatives] = useState<Initiative[]>([]);
+  const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [activeNav, setActiveNav] = useState<ActiveNav>('overview');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [selectedPlatformId, setSelectedPlatformId] = useState<string | null>('plt-2');
+  const [selectedPlatformId, setSelectedPlatformId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [portfolioViewMode, setPortfolioViewMode] = useState<PortfolioViewMode>('all');
   const [isEstateDrawerOpen, setIsEstateDrawerOpen] = useState(false);
@@ -192,75 +178,15 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCloudSynced, setIsCloudSynced] = useState(false);
 
-  // Configuration Portal state (kept local to the prototype; not synced to Firestore)
-  const [businessUnits, setBusinessUnits] = useState<BusinessUnit[]>(INITIAL_BUSINESS_UNITS);
-  const [resourceRates, setResourceRates] = useState<ResourceRate[]>(INITIAL_RESOURCE_RATES);
-  const [benefitCategories, setBenefitCategories] = useState<BenefitCategoryConfig[]>(INITIAL_BENEFIT_CATEGORIES);
-  const [strategicObjectives, setStrategicObjectives] = useState<StrategicObjectiveConfig[]>(INITIAL_STRATEGIC_OBJECTIVES);
+  // Configuration Portal state - synced to Firestore under this account
+  // once signed in (see sync effect below); local-only fallback otherwise.
+  const [businessUnits, setBusinessUnits] = useState<BusinessUnit[]>([]);
+  const [resourceRates, setResourceRates] = useState<ResourceRate[]>([]);
+  const [benefitCategories, setBenefitCategories] = useState<BenefitCategoryConfig[]>([]);
+  const [strategicObjectives, setStrategicObjectives] = useState<StrategicObjectiveConfig[]>([]);
   const [requiredFields, setRequiredFields] = useState<RequiredFieldsConfig>(INITIAL_REQUIRED_FIELDS);
-  const [people, setPeople] = useState<Person[]>(INITIAL_PEOPLE);
-  const [teams, setTeams] = useState<Team[]>(INITIAL_TEAMS);
-
-  const addPerson = (person: Omit<Person, 'id'>): Person => {
-    const newPerson: Person = { ...person, id: `ppl-custom-${Date.now()}` };
-    setPeople((prev) => [...prev, newPerson]);
-    showToast(`Added "${person.name}" to People`);
-    return newPerson;
-  };
-  const updatePerson = (id: string, updates: Partial<Person>) => {
-    setPeople((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
-  };
-
-  const addTeam = (team: Omit<Team, 'id'>): Team => {
-    const newTeam: Team = { ...team, id: `team-custom-${Date.now()}` };
-    setTeams((prev) => [...prev, newTeam]);
-    showToast(`Added "${team.name}" to Teams`);
-    return newTeam;
-  };
-  const updateTeam = (id: string, updates: Partial<Team>) => {
-    setTeams((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
-  };
-
-  const addBusinessUnit = (bu: Omit<BusinessUnit, 'id'>): BusinessUnit => {
-    const newBusinessUnit: BusinessUnit = { ...bu, id: `bu-custom-${Date.now()}` };
-    setBusinessUnits((prev) => [...prev, newBusinessUnit]);
-    showToast(`Added business unit "${bu.name}"`);
-    return newBusinessUnit;
-  };
-  const updateBusinessUnit = (id: string, updates: Partial<BusinessUnit>) => {
-    setBusinessUnits((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
-  };
-
-  const addResourceRate = (rate: Omit<ResourceRate, 'id'>) => {
-    const id = `rate-custom-${Date.now()}`;
-    setResourceRates((prev) => [...prev, { ...rate, id }]);
-    showToast(`Added resource rate for "${rate.role}"`);
-  };
-  const updateResourceRate = (id: string, updates: Partial<ResourceRate>) => {
-    setResourceRates((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
-  };
-
-  const addBenefitCategory = (cat: Omit<BenefitCategoryConfig, 'id'>) => {
-    const id = `cat-custom-${Date.now()}`;
-    setBenefitCategories((prev) => [...prev, { ...cat, id }]);
-    showToast(`Added benefit category "${cat.name}"`);
-  };
-  const updateBenefitCategory = (id: string, updates: Partial<BenefitCategoryConfig>) => {
-    setBenefitCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
-  };
-
-  const addStrategicObjective = (obj: Omit<StrategicObjectiveConfig, 'id'>) => {
-    const id = `obj-custom-${Date.now()}`;
-    setStrategicObjectives((prev) => [...prev, { ...obj, id }]);
-    showToast(`Added strategic objective "${obj.name}"`);
-  };
-  const updateStrategicObjective = (id: string, updates: Partial<StrategicObjectiveConfig>) => {
-    setStrategicObjectives((prev) => prev.map((o) => (o.id === id ? { ...o, ...updates } : o)));
-  };
-
-  const updateRequiredFields = (updates: Partial<RequiredFieldsConfig>) => {
-    setRequiredFields((prev) => ({ ...prev, ...updates }));
-  };
+  const [people, setPeople] = useState<Person[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
 
   const showToast = (message: string, type: 'success' | 'info' | 'warning' = 'success') => {
     const id = Date.now().toString();
@@ -306,96 +232,148 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setIsInitiativeDrawerOpen(false);
   };
 
-  // Synchronize with Firestore when user is authenticated
+  // Per-account Firestore paths - every collection lives under
+  // users/{uid}/<name>, so one account can never see another's data.
+  const userCollection = (name: string) => collection(db, 'users', user!.uid, name);
+  const userDocRef = (name: string, id: string) => doc(db, 'users', user!.uid, name, id);
+
+  // Synchronize every collection with this account's own Firestore data.
+  // Signed out (or no account yet): everything starts and stays empty -
+  // there is no seeded/demo content and no other account's data leaks in.
   useEffect(() => {
     if (!user) {
+      setItems([]);
+      setInitiatives([]);
+      setRelationships([]);
+      setBusinessUnits([]);
+      setResourceRates([]);
+      setBenefitCategories([]);
+      setStrategicObjectives([]);
+      setPeople([]);
+      setTeams([]);
       setIsCloudSynced(false);
+      setIsSyncing(false);
       return;
     }
 
     setIsSyncing(true);
 
-    const unsubscribeItems = onSnapshot(
-      collection(db, 'estateItems'),
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const cloudItems: EstateItem[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudItems.push(docSnap.data() as EstateItem);
-          });
-          setItems(cloudItems);
-          setIsCloudSynced(true);
-        } else {
-          // If Firestore is empty, seed it with initial enterprise catalog!
-          seedInitialDataToCloud();
-        }
-        setIsSyncing(false);
-      },
-      (error) => {
-        setIsSyncing(false);
-        handleFirestoreError(error, OperationType.GET, 'estateItems');
-      }
-    );
+    const subscribe = <T,>(name: string, setState: React.Dispatch<React.SetStateAction<T[]>>) =>
+      onSnapshot(
+        userCollection(name),
+        (snapshot) => setState(snapshot.docs.map((d) => d.data() as T)),
+        (error) => handleFirestoreError(error, OperationType.GET, name)
+      );
 
-    const unsubscribeRels = onSnapshot(
-      collection(db, 'relationships'),
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const cloudRels: Relationship[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudRels.push(docSnap.data() as Relationship);
-          });
-          setRelationships(cloudRels);
-        }
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.GET, 'relationships');
-      }
-    );
+    const unsubscribers = [
+      subscribe<EstateItem>('estateItems', setItems),
+      subscribe<Initiative>('initiatives', setInitiatives),
+      subscribe<Relationship>('relationships', setRelationships),
+      subscribe<BusinessUnit>('businessUnits', setBusinessUnits),
+      subscribe<ResourceRate>('resourceRates', setResourceRates),
+      subscribe<BenefitCategoryConfig>('benefitCategories', setBenefitCategories),
+      subscribe<StrategicObjectiveConfig>('strategicObjectives', setStrategicObjectives),
+      subscribe<Person>('people', setPeople),
+      subscribe<Team>('teams', setTeams),
+    ];
 
-    return () => {
-      unsubscribeItems();
-      unsubscribeRels();
-    };
+    setIsSyncing(false);
+    setIsCloudSynced(true);
+
+    return () => unsubscribers.forEach((unsub) => unsub());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Function to seed initial enterprise data to Cloud Firestore
-  const seedInitialDataToCloud = async () => {
-    if (!user) return;
-    try {
-      setIsSyncing(true);
-      const batch = writeBatch(db);
-      INITIAL_ESTATE_ITEMS.forEach((item) => {
-        const docRef = doc(db, 'estateItems', item.id);
-        batch.set(
-          docRef,
-          cleanFirestoreData({
-            ...item,
-            authorId: user.uid,
-          })
+  /**
+   * Shared CRUD for the simple "master data" collections (business units,
+   * resource rates, benefit categories, strategic objectives, people,
+   * teams): write straight to this account's Firestore when signed in
+   * (the sync effect above reflects the change back), otherwise fall back
+   * to local-only state so the app still works while signed out.
+   */
+  function makeAccountCrud<T extends { id: string }>(
+    name: string,
+    setState: React.Dispatch<React.SetStateAction<T[]>>,
+    idPrefix: string
+  ) {
+    const add = (data: Omit<T, 'id'>): T => {
+      const record = { ...data, id: `${idPrefix}-${Date.now()}` } as T;
+      if (user) {
+        setDoc(userDocRef(name, record.id), cleanFirestoreData(record as Record<string, unknown>)).catch((err) =>
+          handleFirestoreError(err, OperationType.CREATE, `${name}/${record.id}`)
         );
-      });
+      } else {
+        setState((prev) => [...prev, record]);
+      }
+      return record;
+    };
 
-      INITIAL_RELATIONSHIPS.forEach((rel) => {
-        const docRef = doc(db, 'relationships', rel.id);
-        batch.set(
-          docRef,
-          cleanFirestoreData({
-            ...rel,
-            authorId: user.uid,
-          })
+    const update = (id: string, updates: Partial<T>) => {
+      if (user) {
+        setDoc(userDocRef(name, id), cleanFirestoreData(updates as Record<string, unknown>), { merge: true }).catch(
+          (err) => handleFirestoreError(err, OperationType.UPDATE, `${name}/${id}`)
         );
-      });
+      } else {
+        setState((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+      }
+    };
 
-      await batch.commit();
-      setIsCloudSynced(true);
-      showToast('Cloud Firestore populated with Enterprise Portfolio');
-    } catch (err) {
-      console.error('Error seeding data:', err);
-      handleFirestoreError(err, OperationType.WRITE, 'estateItems');
-    } finally {
-      setIsSyncing(false);
-    }
+    return { add, update };
+  }
+
+  const peopleCrud = makeAccountCrud<Person>('people', setPeople, 'ppl-custom');
+  const addPerson = (person: Omit<Person, 'id'>): Person => {
+    const created = peopleCrud.add(person);
+    showToast(`Added "${person.name}" to People`);
+    return created;
+  };
+  const updatePerson = (id: string, updates: Partial<Person>) => peopleCrud.update(id, updates);
+
+  const teamsCrud = makeAccountCrud<Team>('teams', setTeams, 'team-custom');
+  const addTeam = (team: Omit<Team, 'id'>): Team => {
+    const created = teamsCrud.add(team);
+    showToast(`Added "${team.name}" to Teams`);
+    return created;
+  };
+  const updateTeam = (id: string, updates: Partial<Team>) => teamsCrud.update(id, updates);
+
+  const businessUnitsCrud = makeAccountCrud<BusinessUnit>('businessUnits', setBusinessUnits, 'bu-custom');
+  const addBusinessUnit = (bu: Omit<BusinessUnit, 'id'>): BusinessUnit => {
+    const created = businessUnitsCrud.add(bu);
+    showToast(`Added business unit "${bu.name}"`);
+    return created;
+  };
+  const updateBusinessUnit = (id: string, updates: Partial<BusinessUnit>) => businessUnitsCrud.update(id, updates);
+
+  const resourceRatesCrud = makeAccountCrud<ResourceRate>('resourceRates', setResourceRates, 'rate-custom');
+  const addResourceRate = (rate: Omit<ResourceRate, 'id'>) => {
+    resourceRatesCrud.add(rate);
+    showToast(`Added resource rate for "${rate.role}"`);
+  };
+  const updateResourceRate = (id: string, updates: Partial<ResourceRate>) => resourceRatesCrud.update(id, updates);
+
+  const benefitCategoriesCrud = makeAccountCrud<BenefitCategoryConfig>('benefitCategories', setBenefitCategories, 'cat-custom');
+  const addBenefitCategory = (cat: Omit<BenefitCategoryConfig, 'id'>) => {
+    benefitCategoriesCrud.add(cat);
+    showToast(`Added benefit category "${cat.name}"`);
+  };
+  const updateBenefitCategory = (id: string, updates: Partial<BenefitCategoryConfig>) =>
+    benefitCategoriesCrud.update(id, updates);
+
+  const strategicObjectivesCrud = makeAccountCrud<StrategicObjectiveConfig>(
+    'strategicObjectives',
+    setStrategicObjectives,
+    'obj-custom'
+  );
+  const addStrategicObjective = (obj: Omit<StrategicObjectiveConfig, 'id'>) => {
+    strategicObjectivesCrud.add(obj);
+    showToast(`Added strategic objective "${obj.name}"`);
+  };
+  const updateStrategicObjective = (id: string, updates: Partial<StrategicObjectiveConfig>) =>
+    strategicObjectivesCrud.update(id, updates);
+
+  const updateRequiredFields = (updates: Partial<RequiredFieldsConfig>) => {
+    setRequiredFields((prev) => ({ ...prev, ...updates }));
   };
 
   const addItem = async (
@@ -412,20 +390,14 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     if (user) {
       try {
-        await setDoc(
-          doc(db, 'estateItems', newId),
-          cleanFirestoreData({
-            ...newItem,
-            authorId: user.uid,
-          })
-        );
+        await setDoc(userDocRef('estateItems', newId), cleanFirestoreData(newItem));
 
         if (relationshipsList && relationshipsList.length > 0) {
           for (let idx = 0; idx < relationshipsList.length; idx++) {
             const rel = relationshipsList[idx];
             const relId = `rel-${Date.now()}-${idx}`;
             await setDoc(
-              doc(db, 'relationships', relId),
+              userDocRef('relationships', relId),
               cleanFirestoreData({
                 id: relId,
                 sourceId: newId,
@@ -433,12 +405,11 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 type: rel.type,
                 label: rel.type,
                 dataFlowDetails: rel.dataFlowDetails,
-                authorId: user.uid,
               })
             );
           }
         }
-        showToast(`Saved "${newItem.name}" to Cloud Firestore`);
+        showToast(`Saved "${newItem.name}" to your AI Portfolio`);
       } catch (err) {
         handleFirestoreError(err, OperationType.CREATE, `estateItems/${newId}`);
       }
@@ -480,15 +451,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     if (user) {
       try {
-        await setDoc(
-          doc(db, 'estateItems', id),
-          cleanFirestoreData({
-            ...updated,
-            authorId: user.uid,
-          }),
-          { merge: true }
-        );
-        showToast('Changes saved to Cloud Firestore');
+        await setDoc(userDocRef('estateItems', id), cleanFirestoreData(updated), { merge: true });
+        showToast('Changes saved');
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, `estateItems/${id}`);
       }
@@ -518,8 +482,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const item = items.find((i) => i.id === id);
     if (user) {
       try {
-        await deleteDoc(doc(db, 'estateItems', id));
-        showToast(`Deleted ${item?.name || 'item'} from Cloud`);
+        await deleteDoc(userDocRef('estateItems', id));
+        showToast(`Deleted ${item?.name || 'item'}`);
       } catch (err) {
         handleFirestoreError(err, OperationType.DELETE, `estateItems/${id}`);
       }
@@ -534,9 +498,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // Initiatives are kept local to the prototype (not synced to Firestore),
-  // matching the existing Configuration Portal pattern.
-  const addInitiative = (initiativeData: Omit<Initiative, 'id' | 'lastUpdated' | 'lastUpdatedDaysAgo'>) => {
+  const addInitiative = async (initiativeData: Omit<Initiative, 'id' | 'lastUpdated' | 'lastUpdatedDaysAgo'>) => {
     const newId = `initiative-custom-${Date.now()}`;
     const newInitiative: Initiative = {
       ...initiativeData,
@@ -544,23 +506,57 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       lastUpdated: 'Today',
       lastUpdatedDaysAgo: 0,
     };
-    setInitiatives((prev) => [newInitiative, ...prev]);
-    showToast(`Added "${newInitiative.name}" to your AI Portfolio`);
+
+    if (user) {
+      try {
+        await setDoc(userDocRef('initiatives', newId), cleanFirestoreData(newInitiative));
+        showToast(`Saved "${newInitiative.name}" to your AI Portfolio`);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `initiatives/${newId}`);
+      }
+    } else {
+      setInitiatives((prev) => [newInitiative, ...prev]);
+      showToast(`Added "${newInitiative.name}" to your AI Portfolio`);
+    }
+
     closeInitiativeDrawer();
   };
 
-  const updateInitiative = (id: string, updates: Partial<Initiative>) => {
-    setInitiatives((prev) =>
-      prev.map((ini) => (ini.id === id ? { ...ini, ...updates, lastUpdated: 'Today', lastUpdatedDaysAgo: 0 } : ini))
-    );
-    showToast('Changes saved locally');
+  const updateInitiative = async (id: string, updates: Partial<Initiative>) => {
+    const existing = initiatives.find((i) => i.id === id);
+    const updated = { ...(existing || {}), ...updates, lastUpdated: 'Today', lastUpdatedDaysAgo: 0 };
+
+    if (user) {
+      try {
+        await setDoc(userDocRef('initiatives', id), cleanFirestoreData(updated), { merge: true });
+        showToast('Changes saved');
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `initiatives/${id}`);
+      }
+    } else {
+      setInitiatives((prev) =>
+        prev.map((ini) => (ini.id === id ? { ...ini, ...updates, lastUpdated: 'Today', lastUpdatedDaysAgo: 0 } : ini))
+      );
+      showToast('Changes saved locally');
+    }
   };
 
-  const deleteInitiative = (id: string) => {
+  const deleteInitiative = async (id: string) => {
     const initiative = initiatives.find((i) => i.id === id);
-    setInitiatives((prev) => prev.filter((i) => i.id !== id));
+
+    if (user) {
+      try {
+        await deleteDoc(userDocRef('initiatives', id));
+        showToast(`Deleted ${initiative?.name || 'initiative'}`);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `initiatives/${id}`);
+      }
+    } else {
+      setInitiatives((prev) => prev.filter((i) => i.id !== id));
+      showToast(`Deleted ${initiative?.name || 'initiative'}`);
+    }
+
     setRelationships((prev) => prev.filter((r) => r.sourceId !== id && r.targetId !== id));
-    showToast(`Deleted ${initiative?.name || 'initiative'}`);
     if (selectedItemId === id) {
       setSelectedItemId(null);
     }
@@ -836,7 +832,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         addInitiative,
         updateInitiative,
         deleteInitiative,
-        seedInitialDataToCloud,
         isSyncing,
         isCloudSynced,
         toasts,
