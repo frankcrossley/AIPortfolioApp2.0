@@ -1,0 +1,6 @@
+{
+  "name": "AI Portfolio",
+  "description": "Enterprise AI estate inventory, portfolio visibility, platforms, applications, agents, and governance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

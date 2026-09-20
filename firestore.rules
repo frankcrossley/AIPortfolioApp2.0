@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global deny-by-default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidEstateItem(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.type in ['Platform', 'Application', 'Agent', 'Initiative', 'Embedded AI', 'Experiment'] &&
+             data.lifecycleStage in ['Ideation', 'Evaluation', 'Development', 'Pilot', 'Production', 'In progress', 'Retired'] &&
+             data.status in ['Active', 'In progress', 'Planning', 'Under Review', 'On hold', 'Retired'] &&
+             data.priority in ['Critical', 'High', 'Medium', 'Low'] &&
+             data.department is string && data.department.size() <= 100 &&
+             (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 300)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             (!('businessOwner' in data) || (data.businessOwner is string && data.businessOwner.size() <= 150)) &&
+             (!('technicalOwner' in data) || (data.technicalOwner is string && data.technicalOwner.size() <= 150)) &&
+             (!('provider' in data) || (data.provider is string && data.provider.size() <= 150)) &&
+             (!('annualCost' in data) || (data.annualCost is number && data.annualCost >= 0)) &&
+             (!('devCost' in data) || (data.devCost is number && data.devCost >= 0)) &&
+             (!('opsCost' in data) || (data.opsCost is number && data.opsCost >= 0)) &&
+             (!('sharedCost' in data) || (data.sharedCost is number && data.sharedCost >= 0)) &&
+             (!('isCostEstimated' in data) || data.isCostEstimated is bool) &&
+             (!('intendedOutcome' in data) || (data.intendedOutcome is string && data.intendedOutcome.size() <= 2000)) &&
+             (!('businessFunction' in data) || (data.businessFunction is string && data.businessFunction.size() <= 200)) &&
+             (!('dataClassification' in data) || data.dataClassification in ['Public', 'Internal', 'Confidential', 'Restricted']) &&
+             (!('valueEvidenceStatus' in data) || data.valueEvidenceStatus in ['Available', 'Documented', 'In progress', 'None', 'Planned']);
+    }
+
+    function isValidRelationship(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.sourceId is string && data.sourceId.size() <= 128 &&
+             data.targetId is string && data.targetId.size() <= 128 &&
+             data.type in ['Built on', 'Uses', 'Part of', 'Depends on', 'Delivered through', 'Owned by', 'Data flow'] &&
+             (!('label' in data) || (data.label is string && data.label.size() <= 200));
+    }
+
+    // Estate Items collection
+    match /estateItems/{itemId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(itemId) && isValidEstateItem(incoming());
+      allow update: if isSignedIn() && isValidId(itemId) && isValidEstateItem(incoming());
+      allow delete: if isSignedIn() && isValidId(itemId);
+    }
+
+    // Relationships collection
+    match /relationships/{relId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(relId) && isValidRelationship(incoming());
+      allow update: if isSignedIn() && isValidId(relId) && isValidRelationship(incoming());
+      allow delete: if isSignedIn() && isValidId(relId);
+    }
+  }
+}

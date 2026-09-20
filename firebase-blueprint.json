@@ -1,0 +1,154 @@
+{
+  "entities": {
+    "EstateItem": {
+      "title": "EstateItem",
+      "description": "An AI initiative, platform, agent, embedded AI, or application within the enterprise estate.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "type": {
+          "type": "string",
+          "enum": ["Platform", "Application", "Agent", "Initiative", "Embedded AI", "Experiment"]
+        },
+        "subtitle": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "businessOwner": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "technicalOwner": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "provider": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "lifecycleStage": {
+          "type": "string",
+          "enum": ["Ideation", "Evaluation", "Development", "Pilot", "Production", "In progress", "Retired"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Active", "In progress", "Planning", "Under Review", "On hold", "Retired"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["Critical", "High", "Medium", "Low"]
+        },
+        "annualCost": {
+          "type": "number"
+        },
+        "devCost": {
+          "type": "number"
+        },
+        "opsCost": {
+          "type": "number"
+        },
+        "sharedCost": {
+          "type": "number"
+        },
+        "isCostEstimated": {
+          "type": "boolean"
+        },
+        "valueEvidenceStatus": {
+          "type": "string",
+          "enum": ["Available", "Documented", "In progress", "None", "Planned"]
+        },
+        "intendedOutcome": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "businessFunction": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "dataClassification": {
+          "type": "string",
+          "enum": ["Public", "Internal", "Confidential", "Restricted"]
+        },
+        "lastUpdated": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "lastUpdatedDaysAgo": {
+          "type": "number"
+        },
+        "tags": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "authorId": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "required": ["id", "name", "type", "lifecycleStage", "status", "priority", "department", "authorId"]
+    },
+    "Relationship": {
+      "title": "Relationship",
+      "description": "An architectural dependency, usage, or data flow link between estate items.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sourceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "targetId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "type": {
+          "type": "string",
+          "enum": ["Built on", "Uses", "Part of", "Depends on", "Delivered through", "Owned by", "Data flow"]
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "authorId": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "required": ["id", "sourceId", "targetId", "type", "authorId"]
+    }
+  },
+  "firestore": {
+    "/estateItems/{itemId}": {
+      "schema": {
+        "$ref": "#/entities/EstateItem"
+      },
+      "description": "Collection of all AI portfolio initiatives, platforms, and items."
+    },
+    "/relationships/{relId}": {
+      "schema": {
+        "$ref": "#/entities/Relationship"
+      },
+      "description": "Collection of architecture dependency links."
+    }
+  }
+}
